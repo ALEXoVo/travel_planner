@@ -1,0 +1,984 @@
+/* 基础样式重置 */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background-color: #f8f9fa;
+    color: #333;
+    line-height: 1.6;
+}
+
+.container {
+    max-width: 100%;
+    margin: 0 auto;
+    padding: 0 20px;
+}
+
+/* 按钮样式 */
+.btn {
+    display: inline-block;
+    padding: 10px 20px;
+    border-radius: 30px;
+    text-decoration: none;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: none;
+    font-size: 14px;
+}
+
+.btn-primary {
+    background-color: #4361ee;
+    color: white;
+}
+
+.btn-primary:hover {
+    background-color: #3a56d4;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(67, 97, 238, 0.3);
+}
+
+.btn-secondary {
+    background-color: #6c757d;
+    color: white;
+}
+
+.btn-secondary:hover {
+    background-color: #5a6268;
+}
+
+.btn-outline {
+    background-color: transparent;
+    border: 1px solid #4361ee;
+    color: #4361ee;
+}
+
+.btn-outline:hover {
+    background-color: #4361ee;
+    color: white;
+}
+
+.btn-large {
+    padding: 15px 30px;
+    font-size: 16px;
+}
+
+.btn-icon {
+    background: none;
+    border: none;
+    color: #4361ee;
+    cursor: pointer;
+    font-size: 16px;
+    padding: 5px;
+}
+
+/* 模态框样式 */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.modal-content {
+    background-color: white;
+    border-radius: 10px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+    width: 90%;
+    max-width: 500px;
+    animation: modalFadeIn 0.3s ease;
+}
+
+@keyframes modalFadeIn {
+    from { opacity: 0; transform: translateY(-50px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.modal-header {
+    padding: 20px;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-header h3 {
+    margin: 0;
+    color: #4361ee;
+}
+
+.close-btn {
+    font-size: 28px;
+    cursor: pointer;
+    color: #aaa;
+}
+
+.close-btn:hover {
+    color: #333;
+}
+
+.modal-body {
+    padding: 20px;
+}
+
+.modal-body p {
+    margin: 0;
+    font-size: 16px;
+    line-height: 1.6;
+}
+
+.modal-footer {
+    padding: 20px;
+    border-top: 1px solid #eee;
+    text-align: right;
+}
+
+/* 头部导航 */
+header {
+    background-color: white;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+header .container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 20px;
+}
+
+.logo h1 {
+    color: #4361ee;
+    font-size: 24px;
+}
+
+nav ul {
+    display: flex;
+    list-style: none;
+}
+
+nav ul li {
+    margin: 0 15px;
+}
+
+nav ul li a {
+    text-decoration: none;
+    color: #6c757d;
+    font-weight: 500;
+    transition: color 0.3s;
+}
+
+nav ul li a:hover,
+nav ul li a.active {
+    color: #4361ee;
+}
+
+.auth-buttons .btn {
+    margin-left: 10px;
+}
+
+/* 主要内容区 */
+.main-content {
+    display: flex;
+    height: calc(100vh - 100px);
+    gap: 0;
+    margin: 20px 0;
+}
+
+/* 左侧聊天面板 */
+.chat-panel {
+    width: 350px;
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+    display: flex;
+    flex-direction: column;
+    transition: all 0.3s ease;
+    margin-right: 20px;
+}
+
+.chat-panel.collapsed {
+    width: 50px;
+}
+
+.chat-panel-header {
+    padding: 20px;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.chat-panel-header h3 {
+    color: #4361ee;
+    font-size: 18px;
+    margin: 0;
+}
+
+.chat-panel.collapsed .chat-panel-header h3 {
+    display: none;
+}
+
+.chat-panel.collapsed .chat-panel-header .toggle-chat i {
+    transform: rotate(180deg);
+}
+
+.chat-panel-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 20px;
+}
+
+.chat-panel.collapsed .chat-panel-body {
+    display: none;
+}
+
+#chat-history {
+    flex: 1;
+    overflow-y: auto;
+    margin-bottom: 20px;
+}
+
+.chat-message {
+    display: flex;
+    margin-bottom: 20px;
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 15px;
+    flex-shrink: 0;
+}
+
+.ai-message .avatar {
+    background-color: #4361ee;
+    color: white;
+}
+
+.user-message .avatar {
+    background-color: #6c757d;
+    color: white;
+    order: 1;
+    margin-right: 0;
+    margin-left: 15px;
+}
+
+.message-content {
+    max-width: 80%;
+    padding: 15px;
+    border-radius: 18px;
+    line-height: 1.5;
+}
+
+.ai-message .message-content {
+    background-color: #f0f4ff;
+    border-top-left-radius: 5px;
+}
+
+.user-message .message-content {
+    background-color: #e9ecef;
+    border-top-right-radius: 5px;
+    order: 0;
+}
+
+.chat-input-area {
+    display: flex;
+    gap: 10px;
+}
+
+#chat-input {
+    flex: 1;
+    padding: 12px 20px;
+    border: 1px solid #ced4da;
+    border-radius: 30px;
+    font-size: 16px;
+    outline: none;
+    transition: border-color 0.3s;
+}
+
+#chat-input:focus {
+    border-color: #4361ee;
+    box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.1);
+}
+
+#send-chat-btn {
+    border-radius: 50%;
+    width: 46px;
+    height: 46px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* 右侧主要内容区域 */
+.main-panel {
+    flex: 1;
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+    padding: 30px;
+    overflow-y: auto;
+}
+
+/* 屏幕样式 */
+.screen {
+    height: 100%;
+    display: none;
+}
+
+#welcome-screen {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+}
+
+#settings-screen, #itinerary-screen {
+    display: none;
+}
+
+.welcome-content {
+    text-align: center;
+    max-width: 600px;
+}
+
+.welcome-content h2 {
+    color: #4361ee;
+    font-size: 36px;
+    margin-bottom: 20px;
+}
+
+.welcome-content p {
+    font-size: 18px;
+    color: #6c757d;
+    margin-bottom: 40px;
+}
+
+.welcome-actions {
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+}
+
+/* 设置界面 */
+.settings-header {
+    margin-bottom: 30px;
+}
+
+.settings-header h2 {
+    color: #4361ee;
+    font-size: 24px;
+    margin-bottom: 10px;
+}
+
+.settings-header p {
+    color: #6c757d;
+}
+
+.settings-form {
+    margin-bottom: 30px;
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 500;
+    color: #495057;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    padding: 12px 15px;
+    border: 1px solid #ced4da;
+    border-radius: 8px;
+    font-size: 16px;
+    transition: border-color 0.3s;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+    outline: none;
+    border-color: #4361ee;
+    box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.1);
+}
+
+.form-row {
+    display: flex;
+    gap: 20px;
+}
+
+.form-row .form-group {
+    flex: 1;
+}
+
+/* 预算输入样式 */
+.budget-input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.budget-option input {
+    width: 100%;
+    padding: 12px 15px;
+    border: 1px solid #ced4da;
+    border-radius: 8px;
+    font-size: 16px;
+    transition: border-color 0.3s;
+}
+
+.budget-option input:focus {
+    outline: none;
+    border-color: #4361ee;
+    box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.1);
+}
+
+/* 风格按钮样式 */
+.style-buttons {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 15px;
+}
+
+.style-btn {
+    background-color: white;
+    border: 2px solid #e0e0e0;
+    border-radius: 10px;
+    padding: 15px 10px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #6c757d;
+    font-weight: 500;
+}
+
+.style-btn:hover {
+    border-color: #4361ee;
+    color: #4361ee;
+    transform: translateY(-3px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.style-btn.active {
+    background-color: #4361ee;
+    border-color: #4361ee;
+    color: white;
+}
+
+.style-btn i {
+    font-size: 20px;
+    margin-bottom: 8px;
+}
+
+.style-btn span {
+    font-size: 14px;
+}
+
+/* 设置界面操作按钮 */
+.settings-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* 行程编辑界面 */
+.itinerary-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 30px;
+}
+
+.itinerary-header h2 {
+    color: #4361ee;
+    font-size: 24px;
+    margin: 0;
+}
+
+/* 行程摘要 */
+.itinerary-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 10px;
+    margin-bottom: 30px;
+}
+
+.summary-item label {
+    display: block;
+    font-weight: 500;
+    margin-bottom: 5px;
+    color: #495057;
+}
+
+.summary-item input,
+.summary-item select {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+/* 行程部分 */
+.itinerary-section {
+    margin-bottom: 20px;
+    border: 1px solid #eee;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.section-header {
+    background: #f8f9fa;
+    padding: 15px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+}
+
+.section-header h3 {
+    color: #4361ee;
+    margin: 0;
+    font-size: 18px;
+}
+
+.section-content {
+    padding: 20px;
+}
+
+.collapsible .section-content {
+    display: none;
+}
+
+.collapsible.expanded .section-content {
+    display: block;
+}
+
+/* 票务卡片 */
+.ticket-card {
+    background: white;
+    border: 1px solid #eee;
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.ticket-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.ticket-header h4 {
+    margin: 0;
+    font-size: 18px;
+}
+
+.ticket-status {
+    padding: 5px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.ticket-status.confirmed {
+    background: #d4edda;
+    color: #155724;
+}
+
+.ticket-status.pending {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.ticket-details {
+    margin-bottom: 20px;
+}
+
+.flight-info,
+.hotel-info {
+    margin-bottom: 15px;
+}
+
+.flight-route {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.flight-route i {
+    color: #4361ee;
+}
+
+.departure,
+.arrival {
+    font-weight: 500;
+}
+
+.flight-time {
+    display: flex;
+    gap: 20px;
+    color: #6c757d;
+}
+
+.flight-meta {
+    display: flex;
+    gap: 20px;
+    color: #6c757d;
+}
+
+.hotel-address {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.hotel-dates {
+    display: flex;
+    gap: 20px;
+    color: #6c757d;
+}
+
+.hotel-meta {
+    display: flex;
+    gap: 20px;
+    color: #6c757d;
+}
+
+.ticket-actions {
+    display: flex;
+    gap: 10px;
+}
+
+/* 地图容器 */
+.map-container {
+    height: 300px;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+#day1-map {
+    width: 100%;
+    height: 100%;
+}
+
+/* 交通信息 */
+.transport-info {
+    margin-bottom: 20px;
+}
+
+.transport-info h4 {
+    color: #4361ee;
+    margin-bottom: 15px;
+}
+
+.transport-route {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 10px;
+}
+
+.route-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.route-item:last-child {
+    margin-bottom: 0;
+}
+
+.route-item .location {
+    font-weight: 500;
+}
+
+.route-item .transport-mode {
+    color: #4361ee;
+}
+
+/* 活动安排 */
+.activities h4 {
+    color: #4361ee;
+    margin-bottom: 15px;
+}
+
+.activity-item {
+    background: #f8f9fa;
+    border-radius: 10px;
+    padding: 15px;
+    margin-bottom: 15px;
+}
+
+.activity-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.activity-title {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    font-size: 16px;
+}
+
+.activity-details {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.activity-details label {
+    font-weight: 500;
+}
+
+.activity-time,
+.activity-description {
+    padding: 8px 12px;
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+.activity-description {
+    min-height: 80px;
+    resize: vertical;
+}
+
+.add-activity {
+    width: 100%;
+    padding: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+/* 活动交通信息样式 */
+.activity-transportation {
+    margin-top: 15px;
+    padding: 10px;
+    background-color: #f8f9fa;
+    border-radius: 5px;
+    border-left: 3px solid #4361ee;
+}
+
+.activity-transportation h5 {
+    margin: 0 0 10px 0;
+    color: #4361ee;
+    font-size: 14px;
+}
+
+.transport-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+    padding: 5px 0;
+}
+
+.transport-item:last-child {
+    margin-bottom: 0;
+}
+
+.transport-mode {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: bold;
+    color: white;
+    margin-right: 10px;
+}
+
+.transport-mode.步行 {
+    background-color: #2ecc71;
+}
+
+.transport-mode.公交/地铁 {
+    background-color: #3498db;
+}
+
+.transport-mode.打车 {
+    background-color: #e74c3c;
+}
+
+.transport-details {
+    font-size: 13px;
+    color: #666;
+}
+
+/* 天气信息 */
+.weather-info {
+    background: #e3f2fd;
+    border-radius: 10px;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+
+.weather-info h4 {
+    color: #1976d2;
+    margin-bottom: 10px;
+}
+
+.weather-details {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 10px;
+}
+
+.weather-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 5px 0;
+}
+
+.weather-label {
+    font-weight: 500;
+    color: #555;
+}
+
+.weather-value {
+    color: #333;
+}
+
+/* 响应式设计 */
+@media (max-width: 1200px) {
+    .main-content {
+        flex-direction: column;
+        height: auto;
+    }
+    
+    .chat-panel {
+        width: 100%;
+        margin-right: 0;
+        margin-bottom: 20px;
+    }
+    
+    .welcome-actions {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .settings-actions {
+        flex-direction: column;
+        gap: 15px;
+        align-items: flex-start;
+    }
+    
+    .primary-actions {
+        width: 100%;
+        justify-content: space-between;
+    }
+}
+
+@media (max-width: 992px) {
+    .form-row {
+        flex-direction: column;
+        gap: 0;
+    }
+    
+    .style-buttons {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .itinerary-summary {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    .container {
+        padding: 0 15px;
+    }
+    
+    header .container {
+        flex-wrap: wrap;
+    }
+    
+    nav {
+        order: 3;
+        width: 100%;
+        margin-top: 15px;
+    }
+    
+    nav ul {
+        justify-content: center;
+    }
+    
+    .auth-buttons {
+        margin-left: auto;
+    }
+    
+    .style-buttons {
+        grid-template-columns: repeat(1, 1fr);
+    }
+    
+    .ticket-actions {
+        flex-direction: column;
+    }
+}
+
+@media (max-width: 576px) {
+    .main-panel {
+        padding: 20px;
+    }
+    
+    .welcome-content h2 {
+        font-size: 28px;
+    }
+    
+    .welcome-content p {
+        font-size: 16px;
+    }
+    
+    .footer-content {
+        flex-direction: column;
+        gap: 30px;
+    }
+}

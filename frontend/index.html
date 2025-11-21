@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TravelWorld - 智能旅游行程规划助手</title>
+    <link rel="stylesheet" href="style.css">
+    <script type="text/javascript" src="https://webapi.amap.com/maps?v=1.4.15&key=195725c002640ec2e5a80b4775dd2189&plugin=AMap.Driving,AMap.Walking"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <header>
+        <div class="container">
+            <div class="logo">
+                <h1><i class="fas fa-globe-asia"></i> TravelWorld</h1>
+            </div>
+            <nav>
+                <ul>
+                    <li><a href="#" class="active">首页</a></li>
+                    <li><a href="#">目的地</a></li>
+                    <li><a href="#">行程</a></li>
+                    <li><a href="#">社区</a></li>
+                    <li><a href="#">我的</a></li>
+                </ul>
+            </nav>
+            <div class="auth-buttons">
+                <button class="btn btn-outline">登录</button>
+                <button class="btn btn-primary">注册</button>
+            </div>
+        </div>
+    </header>
+
+    <!-- 自定义消息模态框 -->
+    <div id="message-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="message-title">提示</h3>
+                <span class="close-btn" id="close-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p id="message-content"></p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" id="confirm-modal">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <main>
+        <div class="container main-content">
+            <!-- 左侧聊天面板 -->
+            <div class="chat-panel">
+                <div class="chat-panel-header">
+                    <h3><i class="fas fa-robot"></i> AI旅行助手</h3>
+                    <button class="btn-icon toggle-chat" id="toggle-chat">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                </div>
+                <div class="chat-panel-body">
+                    <div id="chat-history">
+                        <div class="chat-message ai-message">
+                            <div class="avatar">
+                                <i class="fas fa-robot"></i>
+                            </div>
+                            <div class="message-content">
+                                您好！我是您的AI旅行助手，可以帮助您规划完美的旅程。请告诉我您的旅行偏好、目的地或任何具体问题。
+                            </div>
+                        </div>
+                    </div>
+                    <div class="chat-input-area">
+                        <input type="text" id="chat-input" placeholder="输入您的旅行问题...">
+                        <button class="btn btn-primary" id="send-chat-btn">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右侧主要内容区域 -->
+            <div class="main-panel">
+                <!-- 初始界面 -->
+                <div id="welcome-screen" class="screen">
+                    <div class="welcome-content">
+                        <h2>欢迎使用 TravelWorld</h2>
+                        <p>智能旅行规划助手，为您量身定制专属旅程</p>
+                        <div class="welcome-actions">
+                            <button class="btn btn-primary btn-large" id="new-journey-btn">
+                                <i class="fas fa-plus-circle"></i> 新建旅程
+                            </button>
+                            <button class="btn btn-secondary btn-large" id="history-journey-btn">
+                                <i class="fas fa-history"></i> 历史旅程
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 设置界面 -->
+                <div id="settings-screen" class="screen" style="display: none;">
+                    <div class="settings-header">
+                        <h2><i class="fas fa-cog"></i> 旅程设置</h2>
+                        <p>请填写以下信息以开始规划您的旅程</p>
+                    </div>
+                    
+                    <div class="settings-form">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>出发城市</label>
+                                <input type="text" id="origin-city" placeholder="请输入出发城市，例如：上海">
+                            </div>
+                            <div class="form-group">
+                                <label>目的地城市</label>
+                                <input type="text" id="destination-city" placeholder="请输入目的地城市，例如：北京">
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>出发日期</label>
+                                <input type="date" id="start-date">
+                            </div>
+                            <div class="form-group">
+                                <label>返回日期</label>
+                                <input type="date" id="end-date">
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>旅游预算</label>
+                                <div class="budget-input-group">
+                                    <select id="budget-type">
+                                        <option value="preset">预设预算</option>
+                                        <option value="custom">自定义预算</option>
+                                    </select>
+                                    <div id="preset-budget" class="budget-option">
+                                        <select id="budget">
+                                            <option value="low">经济型 (100-300元/天)</option>
+                                            <option value="medium" selected>舒适型 (300-800元/天)</option>
+                                            <option value="high">豪华型 (800元以上/天)</option>
+                                        </select>
+                                    </div>
+                                    <div id="custom-budget" class="budget-option" style="display: none;">
+                                        <input type="number" id="custom-budget-amount" placeholder="请输入总预算金额">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>出行人数</label>
+                                <select id="travelers">
+                                    <option value="1">1人</option>
+                                    <option value="2">2人</option>
+                                    <option value="3">3人</option>
+                                    <option value="4">4人</option>
+                                    <option value="5">5人以上</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>人群类型</label>
+                            <div class="style-buttons" id="group-type">
+                                <button type="button" class="style-btn" data-type="family">
+                                    <i class="fas fa-users"></i>
+                                    <span>家庭出游</span>
+                                </button>
+                                <button type="button" class="style-btn" data-type="couple">
+                                    <i class="fas fa-heart"></i>
+                                    <span>情侣度假</span>
+                                </button>
+                                <button type="button" class="style-btn" data-type="friends">
+                                    <i class="fas fa-user-friends"></i>
+                                    <span>朋友聚会</span>
+                                </button>
+                                <button type="button" class="style-btn" data-type="solo">
+                                    <i class="fas fa-user"></i>
+                                    <span>独自旅行</span>
+                                </button>
+                                <button type="button" class="style-btn" data-type="business">
+                                    <i class="fas fa-briefcase"></i>
+                                    <span>商务出行</span>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>旅游风格</label>
+                            <div class="style-buttons" id="travel-style">
+                                <button type="button" class="style-btn" data-style="scenery">
+                                    <i class="fas fa-mountain"></i>
+                                    <span>自然风光</span>
+                                </button>
+                                <button type="button" class="style-btn" data-style="culture">
+                                    <i class="fas fa-landmark"></i>
+                                    <span>文化历史</span>
+                                </button>
+                                <button type="button" class="style-btn" data-style="food">
+                                    <i class="fas fa-utensils"></i>
+                                    <span>美食体验</span>
+                                </button>
+                                <button type="button" class="style-btn" data-style="shopping">
+                                    <i class="fas fa-shopping-bag"></i>
+                                    <span>购物娱乐</span>
+                                </button>
+                                <button type="button" class="style-btn" data-style="adventure">
+                                    <i class="fas fa-hiking"></i>
+                                    <span>探险户外</span>
+                                </button>
+                                <button type="button" class="style-btn" data-style="relax">
+                                    <i class="fas fa-spa"></i>
+                                    <span>休闲度假</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="settings-actions">
+                        <button class="btn btn-secondary" id="back-to-welcome">
+                            <i class="fas fa-arrow-left"></i> 返回
+                        </button>
+                        <button class="btn btn-primary" id="ai-generate-itinerary">
+                            <i class="fas fa-robot"></i> AI生成行程
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 行程编辑界面 -->
+                <div id="itinerary-screen" class="screen" style="display: none;">
+                    <div class="itinerary-header">
+                        <h2><i class="fas fa-route"></i> 行程编辑</h2>
+                        <button class="btn btn-secondary" id="back-to-settings">
+                            <i class="fas fa-arrow-left"></i> 返回设置
+                        </button>
+                    </div>
+                    
+                    <!-- 可编辑的旅程信息 -->
+                    <div class="itinerary-summary">
+                        <div class="summary-item">
+                            <label>出发地</label>
+                            <input type="text" id="edit-origin-city" value="上海">
+                        </div>
+                        <div class="summary-item">
+                            <label>目的地</label>
+                            <input type="text" id="edit-destination-city" value="北京">
+                        </div>
+                        <div class="summary-item">
+                            <label>出行日期</label>
+                            <input type="date" id="edit-start-date" value="2023-10-01">
+                        </div>
+                        <div class="summary-item">
+                            <label>返回日期</label>
+                            <input type="date" id="edit-end-date" value="2023-10-05">
+                        </div>
+                        <div class="summary-item">
+                            <label>出行人数</label>
+                            <select id="edit-travelers">
+                                <option value="1">1人</option>
+                                <option value="2" selected>2人</option>
+                                <option value="3">3人</option>
+                                <option value="4">4人</option>
+                                <option value="5">5人以上</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <!-- 交通信息 -->
+                    <div class="itinerary-section">
+                        <div class="section-header collapsible">
+                            <h3><i class="fas fa-plane"></i> 交通信息</h3>
+                            <i class="fas fa-chevron-down"></i>
+                        </div>
+                        <div class="section-content">
+                            <div class="ticket-card">
+                                <div class="ticket-header">
+                                    <h4>去程航班</h4>
+                                    <span class="ticket-status confirmed">已确认</span>
+                                </div>
+                                <div class="ticket-details">
+                                    <div class="flight-info">
+                                        <div class="flight-route">
+                                            <span class="departure">上海 (SHA)</span>
+                                            <i class="fas fa-plane"></i>
+                                            <span class="arrival">北京 (PEK)</span>
+                                        </div>
+                                        <div class="flight-time">
+                                            <span>2023-10-01 08:30</span>
+                                            <span>11:15</span>
+                                        </div>
+                                    </div>
+                                    <div class="flight-meta">
+                                        <span>航班号: CA1234</span>
+                                        <span>经济舱</span>
+                                    </div>
+                                </div>
+                                <div class="ticket-actions">
+                                    <button class="btn btn-outline">查看详情</button>
+                                    <button class="btn btn-primary">编辑</button>
+                                </div>
+                            </div>
+                            
+                            <div class="ticket-card">
+                                <div class="ticket-header">
+                                    <h4>返程航班</h4>
+                                    <span class="ticket-status pending">待确认</span>
+                                </div>
+                                <div class="ticket-details">
+                                    <div class="flight-info">
+                                        <div class="flight-route">
+                                            <span class="departure">北京 (PEK)</span>
+                                            <i class="fas fa-plane"></i>
+                                            <span class="arrival">上海 (SHA)</span>
+                                        </div>
+                                        <div class="flight-time">
+                                            <span>2023-10-05 18:30</span>
+                                            <span>21:15</span>
+                                        </div>
+                                    </div>
+                                    <div class="flight-meta">
+                                        <span>航班号: CA5678</span>
+                                        <span>经济舱</span>
+                                    </div>
+                                </div>
+                                <div class="ticket-actions">
+                                    <button class="btn btn-outline">查看详情</button>
+                                    <button class="btn btn-primary">编辑</button>
+                                </div>
+                            </div>
+                            
+                            <div class="section-actions">
+                                <button class="btn btn-primary" id="plan-all-routes-btn">
+                                    <i class="fas fa-route"></i> 规划所有路线
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 酒店信息 -->
+                    <div class="itinerary-section">
+                        <div class="section-header collapsible">
+                            <h3><i class="fas fa-hotel"></i> 酒店信息</h3>
+                            <i class="fas fa-chevron-down"></i>
+                        </div>
+                        <div class="section-content">
+                            <div class="ticket-card">
+                                <div class="ticket-header">
+                                    <h4>北京市中心酒店</h4>
+                                    <span class="ticket-status confirmed">已确认</span>
+                                </div>
+                                <div class="ticket-details">
+                                    <div class="hotel-info">
+                                        <div class="hotel-address">
+                                            <i class="fas fa-map-marker-alt"></i>
+                                            <span>北京市东城区王府井大街123号</span>
+                                        </div>
+                                        <div class="hotel-dates">
+                                            <span>入住: 2023-10-01</span>
+                                            <span>退房: 2023-10-05</span>
+                                        </div>
+                                    </div>
+                                    <div class="hotel-meta">
+                                        <span>双床房 x 1间</span>
+                                        <span>含早餐</span>
+                                    </div>
+                                </div>
+                                <div class="ticket-actions">
+                                    <button class="btn btn-outline">查看详情</button>
+                                    <button class="btn btn-primary">编辑</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 第一天 -->
+                    <div class="itinerary-section">
+                        <div class="section-header collapsible">
+                            <h3><i class="fas fa-calendar-day"></i> 第一天 (2023-10-01)</h3>
+                            <i class="fas fa-chevron-down"></i>
+                        </div>
+                        <div class="section-content">
+                            <div class="day-content">
+                                <div class="map-container">
+                                    <div id="day1-map" style="width: 100%; height: 300px;"></div>
+                                </div>
+                                
+                                <div class="transport-info">
+                                    <h4><i class="fas fa-bus"></i> 交通信息</h4>
+                                    <div class="transport-route">
+                                        <div class="route-item">
+                                            <span class="location">机场</span>
+                                            <i class="fas fa-arrow-right"></i>
+                                            <span class="transport-mode">机场大巴</span>
+                                            <i class="fas fa-arrow-right"></i>
+                                            <span class="location">酒店</span>
+                                        </div>
+                                        <div class="route-item">
+                                            <span class="location">酒店</span>
+                                            <i class="fas fa-arrow-right"></i>
+                                            <span class="transport-mode">步行</span>
+                                            <i class="fas fa-arrow-right"></i>
+                                            <span class="location">王府井</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="activities">
+                                    <h4><i class="fas fa-tasks"></i> 活动安排</h4>
+                                    <div class="activity-item">
+                                        <div class="activity-header">
+                                            <input type="text" value="入住酒店" class="activity-title">
+                                            <button class="btn-icon remove-activity"><i class="fas fa-trash"></i></button>
+                                        </div>
+                                        <div class="activity-details">
+                                            <label>时间</label>
+                                            <input type="text" value="09:00" class="activity-time">
+                                            <label>描述</label>
+                                            <textarea class="activity-description"></textarea>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="activity-item">
+                                        <div class="activity-header">
+                                            <input type="text" value="游览天安门广场" class="activity-title">
+                                            <button class="btn-icon remove-activity"><i class="fas fa-trash"></i></button>
+                                        </div>
+                                        <div class="activity-details">
+                                            <label>时间</label>
+                                            <input type="text" value="12:00" class="activity-time">
+                                            <label>描述</label>
+                                            <textarea class="activity-description"></textarea>
+                                        </div>
+                                    </div>
+                                    
+                                    <button class="btn btn-outline add-activity">
+                                        <i class="fas fa-plus"></i> 添加活动
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+    <script src="script.js"></script>
+</body>
+</html>
