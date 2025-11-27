@@ -4,7 +4,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-TravelWorld is an intelligent travel itinerary planning assistant that combines AMap (高德地图) APIs with DeepSeek AI to generate personalized travel plans. The application uses a Flask backend and vanilla HTML/CSS/JavaScript frontend.
+TravelWorld (TravelPlanner) is an intelligent travel itinerary planning platform that combines **LLM creativity** with **algorithmic precision** to deliver practical, personalized travel plans. The core differentiator is solving the "multi-entrance backtracking problem" for large attractions and dynamically adjusting planning strategies based on trip proximity.
+
+**Architecture Philosophy**: "Sandwich Architecture"
+- **Upper Layer (LLM)**: Intent recognition, POI recommendations, narrative generation
+- **Middle Layer (Algorithm)**: Geocoding, multi-entrance calculation, route optimization (TSP)
+- **Lower Layer (LLM)**: Polishing final itinerary with conversational text
+
+**Tech Stack**:
+- Backend: Python Flask + AMap APIs + DeepSeek AI + OR-Tools
+- Frontend: Vanilla HTML/CSS/JavaScript + AMap JavaScript API
+- Dependencies: See `backend/requirements.txt` (Flask, CORS, requests, openai, ortools, numpy)
 
 ## Development Commands
 
@@ -12,154 +22,549 @@ TravelWorld is an intelligent travel itinerary planning assistant that combines 
 ```bash
 cd backend
 pip install -r requirements.txt
+
+# Set environment variables
+export AMAP_API_KEY=your_amap_api_key
+export DEEPSEEK_API_KEY=your_deepseek_api_key
+
+# Run server
 python app.py
 ```
-- Backend runs on `http://localhost:8888`
-- Requires environment variables: `AMAP_API_KEY` and `DEEPSEEK_API_KEY`
+- Backend runs on `http://localhost:8888` (configurable in `config.py`)
+- API key configuration: `backend/config.py:14-19`
 
 ### Frontend Setup
-- Open `frontend/index.html` directly in a browser
-- Requires AMap API key to be set in `frontend/index.html` line 8
+- Open `frontend/index.html` in a browser
+- Update AMap API key at `frontend/index.html:8`
 
-## Architecture Overview
-
-### Backend Architecture (Flask)
-
-**Main Entry Point**: `backend/app.py`
-
-**Core API Endpoints**:
-- `POST /api/itinerary/generate` - Main itinerary generation endpoint using DeepSeek AI
-- `POST /api/assistant/chat` - AI chat assistant for travel questions
-- `POST /api/route/planning` - AMap route planning
-- `GET /api/weather/info` - Weather information for cities
-
-**Critical Flow for Itinerary Generation**:
-1. Frontend sends user preferences to `/api/itinerary/generate`
-2. Backend fetches POI data from AMap for multiple categories:
-   - Scenic spots (风景名胜)
-   - Food (餐饮服务)
-   - Hotels (住宿服务)
-   - Cultural sites (科教文化服务)
-   - Shopping (购物服务)
-   - Parent-child activities (亲子场所)
-3. Backend calls `_add_coordinates_to_pois()` to enrich POI data with coordinates using geocoding/POI search
-4. Backend constructs a detailed prompt with POI information and sends to DeepSeek AI
-5. AI returns JSON itinerary with activities for each day
-6. Backend processes the JSON response with `fix_incomplete_json()` function to handle potential truncation
-7. Backend enriches activities with:
-   - Geocoded coordinates (if AI didn't provide them)
-   - Transportation information using `_get_route_data()`
-   - Polyline data for route visualization
-8. Returns complete itinerary with transportation details
-
-**Key Helper Functions**:
-- `_get_poi_coordinates(name, address, city, amap_key)` - Gets coordinates via geocoding or POI search
-- `_add_coordinates_to_pois(poi_list, city, amap_key)` - Batch coordinate enrichment
-- `_get_estimated_distance_and_duration(origin, destination)` - Uses AMap distance API
-- `_get_route_data(origin, destination, mode, city)` - Returns (distance, duration, mode, polyline) for walking/transit/driving
-- `fix_incomplete_json(json_str)` - Repairs truncated JSON from AI responses
-
-**Transportation Mode Selection Logic** (in `app.py:864-870`):
-- Distance < 1km → Walking (步行)
-- Distance 1-5km → Transit (公交/地铁)
-- Distance > 5km → Driving/Taxi (驾车/打车)
-
-**Polyline Format**: Backend returns uncompressed polyline strings in format `"lng1,lat1;lng2,lat2;..."` (not AMap's compressed format)
-
-### Frontend Architecture (Vanilla JavaScript)
-
-**Main Files**:
-- `frontend/index.html` - Main HTML structure
-- `frontend/script.js` - All application logic
-- `frontend/style.css` - Styling (not analyzed)
-
-**Key UI Screens**:
-1. Welcome Screen - Initial landing page
-2. Settings Screen - User input for travel preferences
-3. Itinerary Screen - Generated itinerary display with maps
-
-**Critical JavaScript Functions**:
-- `generateItineraryWithAI()` - Collects user preferences, calls backend API, stores result in global `itinerary` variable
-- `generateDailySessions(itineraryData)` - Dynamically creates HTML for each day's itinerary
-- `initDayMap(dayNumber, activities)` - Creates AMap instance for each day
-- `drawRouteOnMap(map, activities)` - Renders routes using polyline data from backend
-- `parseUncompressedPolyline(polylineStr)` - **Critical**: Parses backend's `"lng,lat;lng,lat"` format (NOT AMap's compressed format)
-- `planAllRoutes()` - Renders all routes on all day maps
-
-**Important Global State**:
-- `userPreferences` - Stores all user input
-- `itinerary` - Stores fetched itinerary data (set in `script.js:476`)
-- `chatHistory` - Stores AI chat conversation
-
-**Map Integration Notes**:
-- AMap JavaScript API v1.4.15 loaded from CDN
-- Each day has its own map container: `day{N}-map`
-- Polylines use custom parsing function `parseUncompressedPolyline()` at `script.js:685-705`
-- Route colors: Walking (green `#29b380`), Driving (blue `#4361ee`), Transit (red `#fa7070`)
-
-## API Configuration
-
-**Required Environment Variables**:
+### Testing Route Optimization
 ```bash
-export AMAP_API_KEY=your_amap_key
-export DEEPSEEK_API_KEY=your_deepseek_key
+cd backend
+python -c "from services.route_optimizer import RouteOptimizer; print(RouteOptimizer)"
 ```
 
-**Default Keys** (hardcoded in code, should be replaced):
-- AMap: `195725c002640ec2e5a80b4775dd2189`
-- DeepSeek: `sk-d5826bdc14774b718b056a376bf894e0`
+## Core Architecture
 
-**Important**: Default keys are embedded in both backend (`app.py:28,33`) and frontend (`index.html:8`)
+### Backend Structure
+
+```
+backend/
+├── app.py                    # Flask app entry point, blueprint registration
+├── config.py                 # Centralized configuration (API keys, constants)
+├── routes/
+│   ├── itinerary.py         # POST /api/itinerary/generate, /api/assistant/chat
+│   ├── map.py               # POST /api/route/planning, GET /api/weather/info
+│   └── poi.py               # POI CRUD operations
+├── services/
+│   ├── amap_service.py      # AMap API wrapper (geocoding, routing, POI search, weather)
+│   ├── ai_service.py        # DeepSeek AI client wrapper
+│   ├── route_optimizer.py   # OR-Tools TSP solver + greedy fallback
+│   └── itinerary_builder.py # Main orchestrator: integrates AI + maps + optimization
+└── utils/
+    ├── geo_utils.py         # Haversine distance, coordinate batch processing
+    ├── json_fixer.py        # Robust JSON parsing for truncated LLM responses
+    └── prompts.py           # Prompt templates for LLM itinerary generation
+```
+
+### Key Modules
+
+#### 1. `itinerary_builder.py` - Main Orchestrator
+**Flow**: `build_itinerary()` at line 40
+1. Validate user preferences (destination, dates, budget, travelers, styles)
+2. Calculate trip duration
+3. Fetch POI data (scenic spots, food, hotels, cultural, shopping, parent-child)
+4. Fetch weather data
+5. Generate AI itinerary using structured prompt
+6. Enrich itinerary with coordinates and transportation
+
+**Critical Methods**:
+- `_fetch_poi_data()` (line 128): Fetches all POI categories from AMap
+- `_generate_ai_itinerary()` (line 202): Constructs prompt and calls AI
+- `_enrich_itinerary()` (line 299): Adds coordinates, calculates transportation
+- `_resolve_activity_coordinates()` (line 410): Geocoding cascade (AI coords → geocode → POI search → default)
+- `_calculate_transportation()` (line 453): Calculates routes between consecutive activities
+
+#### 2. `route_optimizer.py` - TSP Solver
+**Algorithm**: Uses OR-Tools Constraint Solver with guided local search
+- `optimize_route()` (line 39): Main entry point
+- `_solve_with_ortools()` (line 78): Professional TSP solver (>2 POIs)
+- `_greedy_nearest_neighbor()` (line 155): Fallback for small problems or OR-Tools unavailable
+- `_apply_weights()` (line 258): **Extension point** for weather/traffic penalties
+
+**Distance Matrix**: Built using Haversine formula (`_calculate_distance()` at line 226)
+
+**Search Parameters** (line 123-130):
+- Strategy: `PATH_CHEAPEST_ARC`
+- Metaheuristic: `GUIDED_LOCAL_SEARCH`
+- Timeout: 5 seconds
+
+#### 3. `amap_service.py` - AMap API Client
+**Core Methods**:
+- `search_scenic_spots()`, `search_food()`, `search_hotels()`, etc.: POI category search
+- `geocode()`: Address → coordinates
+- `regeocode()`: Coordinates → address
+- `get_distance()`: Fast distance/duration estimation
+- `get_walking_route()`, `get_driving_route()`, `get_transit_route()`: Detailed routing with polylines
+- `get_weather()`: Weather forecast
+
+**Polyline Format**: Returns uncompressed `"lng,lat;lng,lat;..."` format (NOT AMap's compressed format)
+
+#### 4. `ai_service.py` - DeepSeek Client
+- `generate_itinerary()`: Structured JSON generation with dynamic token calculation
+- Token formula: `days * 800 + 500`
+- Model: `deepseek-chat`
+- System prompt emphasizes JSON structure compliance
+
+### Frontend Architecture
+
+**Main Files**:
+- `frontend/index.html`: UI structure, AMap SDK loading
+- `frontend/script.js`: All application logic (see line references below)
+- `frontend/style.css`: Styling
+
+**Key Functions** (`script.js`):
+- `generateItineraryWithAI()`: Collects user input, calls backend `/api/itinerary/generate`
+- `generateDailySessions()`: Renders itinerary HTML
+- `initDayMap()`: Creates AMap instance per day
+- `drawRouteOnMap()`: Renders polylines from backend data
+- `parseUncompressedPolyline()` (line 685-705): **CRITICAL** - Parses `"lng,lat;lng,lat"` format
+- `planAllRoutes()`: Triggers route rendering for all days
+
+**Global State**:
+- `userPreferences`: User form input
+- `itinerary`: Fetched itinerary data (set at line 476)
+- `chatHistory`: AI chat conversation
+
+**Map Integration**:
+- AMap JS API v1.4.15 from CDN
+- Each day has its own map container: `day{N}-map`
+- Route colors: Walking (green `#29b380`), Driving (blue `#4361ee`), Transit (red `#fa7070`)
+
+## API Reference
+
+### Itinerary Generation
+```http
+POST /api/itinerary/generate
+Content-Type: application/json
+
+{
+  "destinationCity": "北京",
+  "originCity": "上海",          // Optional
+  "startDate": "2023-10-01",
+  "endDate": "2023-10-03",
+  "budget": "3000-5000",
+  "budgetType": "range",
+  "customBudget": "",             // Optional
+  "travelers": 2,
+  "travelStyles": ["culture", "food"]
+}
+```
+
+**Response**: JSON with `{ "itinerary": [...], "summary": {...} }`
+
+### AI Chat Assistant
+```http
+POST /api/assistant/chat
+Content-Type: application/json
+
+{
+  "message": "推荐北京的美食",
+  "history": [
+    {"role": "user", "content": "..."},
+    {"role": "assistant", "content": "..."}
+  ]
+}
+```
+
+### Route Planning
+```http
+POST /api/route/planning
+{
+  "origin": "116.397428,39.90923",
+  "destination": "116.480656,39.989576",
+  "waypoints": ["116.4,39.95"],  // Optional
+  "strategy": 0                  // 0: fastest, 1: shortest, 2: avoid highway
+}
+```
+
+### Weather
+```http
+GET /api/weather/info?city=北京
+```
+
+## Configuration (`config.py`)
+
+**API Keys** (lines 14-19):
+- `AMAP_API_KEY`: From `os.environ` or hardcoded default
+- `DEEPSEEK_API_KEY`: From `os.environ` or hardcoded default
+- **Security Note**: Default keys are hardcoded for development only
+
+**Transport Thresholds** (lines 42-53):
+- Distance < 1000m → Walking
+- Distance 1000-5000m → Transit (subway/bus)
+- Distance > 5000m → Driving/taxi
+
+**Route Optimization Settings** (lines 55-59):
+- Weather weight: 0.2
+- Traffic weight: 0.3
+- Distance weight: 0.5
+
+**Default Coordinates**: Beijing (116.397428, 39.90923)
+
+## Planned Features & Reference Projects
+
+This project will integrate techniques from three sibling projects in the parent directory:
+
+### 1. Integration with `amap-mcp-server` (Python MCP Server)
+
+**Purpose**: No-database dynamic POI resolution with multi-entrance support
+
+**Key Functions to Port** (from `amap-mcp-server/server.py`):
+- `maps_text_search(keywords, city)`: Main POI coordinates
+- `maps_around_search(location, keywords="门|出入口")`: **CRITICAL** - Find all gates/entrances
+- `maps_search_detail(id)`: Determine if POI is a large scenic area
+- `maps_distance(origins, destination)`: Distance matrix calculation
+
+**Planned Implementation** (`backend/services/amap_service.py`):
+```python
+def get_poi_gates(poi_name: str, city: str) -> List[Dict]:
+    """
+    Get all entrances/exits for a POI.
+
+    Steps:
+    1. Search main POI coordinates
+    2. Use maps_around_search(location, keywords="门|出入口", radius=2000)
+    3. Return list of gate coordinates
+    """
+    pass
+```
+
+**Algorithm**: Vector-based Gate Selection (`route_optimizer.py` extension)
+- For route A → B → C:
+  - Find all gates of B: {g1, g2, ...}
+  - Calculate min(distance(A, gi)) → Entry_B
+  - Calculate min(distance(gj, C)) → Exit_B
+  - Ensure Entry_B ≠ Exit_B for large attractions (force traversal)
+
+**Reference Implementation Ideas**:
+- Use `maps_distance` for batch distance calculations (line 77 in `amap-mcp-server/README.md`)
+- Check POI type via `maps_search_detail` to determine if multi-entrance logic applies
+
+### 2. Integration with `graphhopper` (Java Routing Engine)
+
+**Purpose**: Learn advanced weighting and custom routing strategies
+
+**Key Concepts to Study**:
+- `graphhopper/core/.../weighting/SpeedWeighting.java`: Dynamic edge weights based on road conditions
+- `graphhopper/core/.../weighting/custom/CustomWeighting.java`: Injecting custom parameters (weather, user preferences)
+- `VirtualEdgeIterator`: Concept of snapping POIs to road network (adapt for gate snapping)
+
+**Planned Implementation** (`route_optimizer.py` enhancement):
+```python
+def _apply_weights(distance_matrix, pois, weather_data, traffic_data):
+    """
+    Cost = Distance × w1 + Duration × w2 + WeatherPenalty
+
+    WeatherPenalty logic (inspired by CustomWeighting.java):
+    - If rain: increase cost for outdoor attractions, walking routes
+    - If traffic jam: increase cost for driving routes
+    - If near-term trip: use real-time traffic data
+    """
+    pass
+```
+
+**Time-Sensitive Strategy** (from DESIGN.md line 24-28):
+- Far-future trips: Distance-weighted (traffic/weather uncertain)
+- Near-term trips: Call AMap's real-time traffic + weather APIs, adjust penalties dynamically
+
+### 3. Integration with `tripper` (Kotlin/Spring Boot Agent)
+
+**Purpose**: Stylized prompt engineering and multi-LLM orchestration
+
+**Key Files to Study**:
+- `tripper/src/.../TripperAgent.kt`: Persona definitions, style customization
+- `tripper/src/.../agent/domain.kt`: Structured travel preferences (Preferences class)
+- Agent architecture: How to coordinate multiple LLMs (Claude Sonnet + GPT-4o-mini)
+
+**Planned Implementation** (`utils/prompts.py` enhancement):
+```python
+STYLE_PERSONAS = {
+    "photography": """
+        You are a travel photographer. Focus on:
+        - Golden hour timing (sunrise/sunset)
+        - Iconic viewpoints
+        - Photo-friendly cafes
+    """,
+    "foodie": """
+        You are a food critic. Prioritize:
+        - Michelin/high-rated restaurants
+        - Local street food
+        - Meal timing aligned with restaurant hours
+    """,
+    "adventure": """
+        You are an adventure guide. Include:
+        - Hiking trails, biking routes
+        - Outdoor activities
+        - Physical challenge levels
+    """
+}
+
+def build_itinerary_generation_prompt(..., travel_styles):
+    persona = STYLE_PERSONAS.get(travel_styles[0], "")
+    # Inject persona into system prompt
+```
+
+**Custom Prompt Support** (DESIGN.md line 40):
+- User input like "traveling with elderly parents, minimize walking"
+- Append to system prompt to adjust POI selection and route weights
+
+### 4. Planned Algorithm Enhancements (from DESIGN.md)
+
+**Multi-Strategy Route Planning** (line 33):
+- Generate 3 route variants: "fastest", "fewest transfers", "shortest distance"
+- Use OR-Tools with different cost functions
+- Present all 3 options to user
+
+**Dynamic Weight Calculation** (line 79):
+```python
+# Pseudo-code for future implementation
+Cost = Distance × w_distance + Duration × w_duration + WeatherPenalty + TrafficPenalty
+
+# Weather penalty (line 86-90 in DESIGN.md)
+if weather == "rainy":
+    if poi_type == "outdoor":
+        WeatherPenalty += 5000  # Heavily discourage outdoor activities
+    if transport_mode == "walking" or transport_mode == "cycling":
+        WeatherPenalty += 2000  # Discourage walking in rain
+
+# Traffic penalty (near-term trips only)
+if days_until_trip < 7:
+    realtime_duration = amap_service.get_driving_route_with_traffic(...)
+    TrafficPenalty = (realtime_duration - estimated_duration) × w_traffic
+```
+
+## Development Roadmap (from DESIGN.md)
+
+### Phase 1: API Integration Layer (`backend/services/amap_service.py`)
+- [ ] Port core functions from `amap-mcp-server/server.py`
+  - `maps_text_search`, `maps_weather`, `maps_distance`, `maps_around_search`
+- [ ] Implement `get_poi_gates(poi_name)`: Search main POI → Search nearby gates
+- [ ] Add caching layer for POI/gate data to reduce API calls
+
+### Phase 2: Core Algorithm Layer (`backend/services/route_optimizer.py`)
+- [ ] Implement `calculate_optimized_route(poi_list, date_proximity)`
+  - Support 3 optimization strategies (fastest/fewest-transfers/shortest)
+- [ ] Implement `optimize_gates_for_sequence()`
+  - Vector-based gate selection algorithm (DESIGN.md line 67-74)
+- [ ] Add weather/traffic penalty logic to `_apply_weights()`
+
+### Phase 3: Business Logic Layer (`backend/services/itinerary_builder.py`)
+- [ ] Integrate gate optimization into `_enrich_activities()`
+  - Call `get_poi_gates()` for attractions
+  - Pass to `optimize_gates_for_sequence()`
+- [ ] Construct structured gate data for LLM prompt:
+  ```json
+  {"poi": "故宫", "entry": "午门", "exit": "神武门", "reason": "minimizes backtracking"}
+  ```
+- [ ] Update prompt to instruct LLM to use gate info in narrative
+
+### Phase 4: Frontend & UX Enhancements
+- [ ] Add style selection UI (photography/foodie/adventure/custom)
+- [ ] Add budget range picker
+- [ ] Display 3 route options with comparison table
+- [ ] Add interactive chat sidebar with "Add to itinerary" buttons
 
 ## Key Technical Details
 
 ### JSON Parsing Robustness
-The `fix_incomplete_json()` function (`app.py:37-107`) handles AI responses that may be truncated due to token limits. It:
+**Problem**: LLM responses truncated due to token limits (especially for long trips)
+
+**Solution**: `utils/json_fixer.py` (lines 37-107 in old app.py)
 - Removes markdown code blocks
 - Fixes missing commas between objects/arrays
 - Balances brackets and quotes
 - Intelligently truncates to last valid delimiter if unfixable
 
-### Coordinate Resolution Strategy
-When processing activities, coordinates are resolved in this order:
-1. Use AI-provided coordinates (if valid)
-2. Call AMap geocoding API with full address
-3. Fallback to POI text search using activity title
-4. Use default Beijing coordinates (116.397428, 39.90923) as last resort
+**Usage**: Called in `itinerary_builder.py:285` after AI response parsing fails
 
-### Transportation Calculation
-Transportation info is calculated between consecutive activities within a day, and from the last activity of the previous day to the first activity of the current day. The first activity of Day 1 has no transportation info (user must get there on their own).
+### Coordinate Resolution Cascade
+**Priority** (`itinerary_builder.py:410-451`):
+1. AI-provided coordinates (if valid float)
+2. AMap geocoding API with full address
+3. AMap POI text search using activity title
+4. Default Beijing coordinates (116.397428, 39.90923)
 
-### Weather Integration
-Weather data from AMap is fetched for the destination city and matched to each day based on date or day index modulo the forecast length.
+**Logging**: All coordinate resolutions logged at INFO level for debugging
+
+### Transportation Calculation Logic
+**Rules** (`itinerary_builder.py:453-519`):
+- First activity of first day: No transportation (user gets there independently)
+- First activity of subsequent days: From last activity of previous day
+- Other activities: From previous activity in same day
+
+**Mode Selection** (`config.py:42-46`):
+- Based on distance thresholds
+- Future: Will incorporate weather/traffic penalties
+
+### Polyline Handling
+**Backend** (`amap_service.py`):
+- Returns uncompressed format: `"lng1,lat1;lng2,lat2;..."`
+- NOT using AMap's compressed polyline format
+
+**Frontend** (`script.js:685-705`):
+- Custom parser: `parseUncompressedPolyline()`
+- Splits by `;`, then by `,` to extract [lng, lat] pairs
+- Debug logs at lines 818, 831 for troubleshooting
+
+**Common Issue**: If polylines don't render, check:
+1. Backend logs for polyline format
+2. Frontend console for parsing errors
+3. Confirm format is uncompressed (not Base64/GZip compressed)
 
 ## Common Development Tasks
 
-### Adding New POI Categories
-1. Add new API call in `generate_itinerary()` around line 334-490
-2. Add category to `all_pois` dict at line 478
-3. Update AI prompt to mention new category at line 534-600
+### Adding New POI Category
+1. Add search method to `amap_service.py` (e.g., `search_adventure()`)
+2. Call in `itinerary_builder.py:_fetch_poi_data()` around line 140-190
+3. Add to `poi_data` dict (line 140)
+4. Update prompt template in `utils/prompts.py` to mention new category
 
 ### Modifying Transportation Logic
-- Mode selection logic: `app.py:864-870`
-- Route data fetching: `_get_route_data()` at `app.py:131-216`
-- Frontend rendering: `drawRouteOnMap()` at `script.js:782-858`
+- Mode selection: `itinerary_builder.py:521` (calls `config.py:42-46`)
+- Route fetching: `itinerary_builder.py:530` (dispatches to walking/transit/driving)
+- Frontend rendering: `script.js:782-858` (drawRouteOnMap)
 
-### Debugging Polyline Issues
-- Check backend logs for polyline string format
-- Verify `parseUncompressedPolyline()` is parsing correctly (see debug logs at `script.js:818,831`)
-- Confirm polyline format matches `"lng,lat;lng,lat..."` not compressed format
+### Debugging OR-Tools Optimization
+**Check if OR-Tools is available**:
+```python
+from services.route_optimizer import ORTOOLS_AVAILABLE
+print(ORTOOLS_AVAILABLE)  # Should be True
+```
 
-### Extending AI Capabilities
-- Modify system prompt at `app.py:617`
-- Adjust JSON structure expectation at `app.py:560-600`
-- Update max_tokens calculation at `app.py:520` (currently `days * 800 + 500`)
+**Force greedy fallback** (for testing):
+```python
+# In route_optimizer.py:70, change:
+if ORTOOLS_AVAILABLE and len(pois) > 2:
+# To:
+if False:  # Force greedy algorithm
+```
 
-## Known Limitations
+**Adjust solver timeout** (`route_optimizer.py:130`):
+```python
+search_parameters.time_limit.seconds = 10  # Increase for complex routes
+```
 
-- Backend runs on port 8888 (not standard 5000)
-- No authentication system implemented
+### Testing Multi-Entrance Logic (Future)
+1. Add test POI with known multiple entrances (e.g., 故宫, 天坛)
+2. Call `get_poi_gates("故宫", "北京")`
+3. Verify gate list contains "午门", "神武门", etc.
+4. Test `optimize_gates_for_sequence()` with A→故宫→B route
+5. Confirm entry ≠ exit for large attractions
+
+### Extending Weather/Traffic Weights
+**Current state**: Placeholder at `route_optimizer.py:258-294`
+
+**Implementation steps**:
+1. Fetch weather via `amap_service.get_weather()`
+2. Check `weather_data['forecasts'][0]['casts'][day_index]`
+3. If `dayweather` contains "雨":
+   - Multiply outdoor POI distances by 1.5
+   - Multiply walking/cycling routes by 1.3
+4. For traffic (near-term trips):
+   - Use `amap_service.get_driving_route(origin, dest)` with real-time traffic
+   - Compare `duration` vs baseline → add penalty if significantly longer
+
+## Known Limitations & Future Work
+
+**Current Limitations**:
+- No user authentication system
 - History feature not implemented (shows placeholder alert)
-- Default coordinates fallback to Beijing
-- AI responses may be truncated for long itineraries (>4000 tokens)
-- Frontend directly embeds API keys (security concern)
+- Single-entrance assumption for all POIs (multi-entrance logic planned)
+- Static transportation mode selection (no weather/traffic consideration)
+- No route optimization across multiple days (only within each day)
+- Frontend embeds API keys (security risk)
+
+**Planned Improvements** (from README.md):
+- [ ] Complete route optimization algorithm with multi-entrance support
+- [ ] User authentication system
+- [ ] Offline map support
+- [ ] Mobile responsive design
+- [ ] Community sharing features
+- [ ] Multi-strategy route comparison (fastest/shortest/fewest-transfers)
+- [ ] Real-time traffic integration for near-term trips
+
+**Technical Debt**:
+- Hardcoded API keys in `config.py` and `frontend/index.html`
+- No rate limiting on API endpoints
+- No database (all data fetched on-demand)
+- Limited error handling for AI response parsing
+- OR-Tools timeout may be insufficient for >20 POIs
+
+## Environment Setup
+
+**Required Environment Variables**:
+```bash
+export AMAP_API_KEY=your_amap_key_here
+export DEEPSEEK_API_KEY=your_deepseek_key_here
+```
+
+**Get API Keys**:
+- AMap: https://console.amap.com/
+- DeepSeek: https://platform.deepseek.com/
+
+**Dependencies**:
+- Python 3.8+
+- Flask 2.3.2
+- Flask-CORS 4.0.0
+- requests 2.31.0
+- openai 1.3.5 (for DeepSeek client)
+- ortools ≥9.7.0 (TSP solver)
+- numpy ≥1.24.0
+
+**Install**:
+```bash
+cd backend
+pip install -r requirements.txt
+```
+
+## Debugging Tips
+
+**Enable verbose logging**:
+```python
+# In app.py:17
+logging.basicConfig(level=logging.DEBUG, ...)
+```
+
+**Check AI response truncation**:
+- Look for "JSON parsing failed, attempting to fix" in logs
+- Check `itinerary_builder.py:281`
+- If persistent, increase `max_tokens` in `ai_service.py`
+
+**Verify AMap API connectivity**:
+```python
+from services.amap_service import AmapService
+service = AmapService()
+result = service.search_scenic_spots("北京")
+print(len(result))  # Should return >0
+```
+
+**Frontend map not loading**:
+- Open browser console
+- Check for AMap API key errors
+- Verify `frontend/index.html:8` has correct key
+
+**Polylines not rendering**:
+- Check `script.js:818, 831` console logs for parsed coordinates
+- Verify backend returns `polyline` field in transportation data
+- Confirm format: `"lng,lat;lng,lat;..."` (semicolon-separated, not comma-only)
+
+## Project Context
+
+**Location**: `D:\Individual\Study\InnovativeThinking\Project\TravelPlanner`
+
+**Related Projects** (sibling directories):
+- `../amap-mcp-server`: AMap MCP server (Python) - POI search, routing, geocoding
+- `../tripper`: Embabel travel agent (Kotlin/Spring) - Multi-LLM orchestration, persona-based planning
+- `../graphhopper`: Routing engine (Java) - Advanced weighting, custom routing strategies
+
+**Design Document**: See `DESIGN.md` for detailed feature specifications and algorithm explanations

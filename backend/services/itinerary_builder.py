@@ -533,7 +533,7 @@ class ItineraryBuilder:
         destination: str,
         mode: str,
         city: str
-    ) -> Tuple[int, int, str]:
+    ) -> tuple[int, int, str]:
         """根据交通方式获取路线"""
         if mode == Config.TRANSPORT_MODES['walking']:
             return self.amap_service.get_walking_route(origin, destination)
