@@ -388,11 +388,49 @@ class ItineraryBuilder:
         if day_index > 0:
             previous_day_activities = all_days[day_index - 1].get('activities', [])
 
+        # 第一遍：解析所有活动的坐标
         for i, activity in enumerate(activities):
-            # 1. 解析/获取坐标
             self._resolve_activity_coordinates(activity, destination_city)
 
-            # 2. 计算交通信息（跳过第一天的第一个活动）
+        # 第二遍：优化出入口选择（多出入口优化）
+        if len(activities) > 0:
+            try:
+                # 准备POI序列供优化
+                poi_sequence = []
+                for activity in activities:
+                    loc = activity.get('location', {})
+                    poi_sequence.append({
+                        'name': activity.get('title', ''),
+                        'lng': loc.get('lng'),
+                        'lat': loc.get('lat'),
+                        'city': destination_city,
+                        'location': f"{loc.get('lng', 0)},{loc.get('lat', 0)}"
+                    })
+
+                # 调用门优化算法
+                optimized_pois = self.route_optimizer.optimize_gates_for_sequence(
+                    poi_sequence,
+                    self.amap_service
+                )
+
+                # 将优化后的门信息写回activities
+                for i, activity in enumerate(activities):
+                    if i < len(optimized_pois):
+                        optimized = optimized_pois[i]
+                        if 'entry_gate' in optimized:
+                            activity['entry_gate'] = optimized['entry_gate']
+                        if 'exit_gate' in optimized:
+                            activity['exit_gate'] = optimized['exit_gate']
+
+                logger.info(f"Gate optimization complete for day {day_index + 1}, {len(activities)} activities")
+
+            except Exception as e:
+                logger.warning(f"Gate optimization failed for day {day_index + 1}: {str(e)}")
+                # 优化失败不影响主流程，继续执行
+
+        # 第三遍：计算交通信息
+        for i, activity in enumerate(activities):
+            # 计算交通信息（跳过第一天的第一个活动）
             if not (day_index == 0 and i == 0):
                 self._calculate_transportation(
                     activity=activity,
@@ -461,27 +499,46 @@ class ItineraryBuilder:
         origin_coords: Optional[tuple],
         is_first_day: bool
     ) -> None:
-        """计算交通信息"""
-        # 确定起点
+        """计算交通信息（支持多出入口优化）"""
+        # 确定起点（优先使用前一个活动的出口门）
         if is_first_of_day and previous_day_activities:
             # 新一天的第一个活动，起点是前一天最后一个活动
             prev_activity = previous_day_activities[-1]
-            origin_lng = prev_activity['location'].get('lng')
-            origin_lat = prev_activity['location'].get('lat')
-            origin_name = prev_activity.get('title', '')
+            # 使用出口门坐标（如果有）
+            if 'exit_gate' in prev_activity and prev_activity['exit_gate']:
+                origin_lng = prev_activity['exit_gate'].get('lng')
+                origin_lat = prev_activity['exit_gate'].get('lat')
+                origin_name = prev_activity.get('title', '') + f"({prev_activity['exit_gate'].get('name', '出口')})"
+            else:
+                origin_lng = prev_activity['location'].get('lng')
+                origin_lat = prev_activity['location'].get('lat')
+                origin_name = prev_activity.get('title', '')
         elif not is_first_of_day:
             # 当天非第一个活动，起点是前一个活动
             prev_activity = activities[activity_index - 1]
-            origin_lng = prev_activity['location'].get('lng')
-            origin_lat = prev_activity['location'].get('lat')
-            origin_name = prev_activity.get('title', '')
+            # 使用出口门坐标（如果有）
+            if 'exit_gate' in prev_activity and prev_activity['exit_gate']:
+                origin_lng = prev_activity['exit_gate'].get('lng')
+                origin_lat = prev_activity['exit_gate'].get('lat')
+                origin_name = prev_activity.get('title', '') + f"({prev_activity['exit_gate'].get('name', '出口')})"
+            else:
+                origin_lng = prev_activity['location'].get('lng')
+                origin_lat = prev_activity['location'].get('lat')
+                origin_name = prev_activity.get('title', '')
         else:
             # 这种情况应该在外层被跳过
             activity['transportation'] = []
             return
 
-        dest_lng = activity['location'].get('lng')
-        dest_lat = activity['location'].get('lat')
+        # 确定终点（优先使用当前活动的入口门）
+        if 'entry_gate' in activity and activity['entry_gate']:
+            dest_lng = activity['entry_gate'].get('lng')
+            dest_lat = activity['entry_gate'].get('lat')
+            dest_name = activity.get('title', '') + f"({activity['entry_gate'].get('name', '入口')})"
+        else:
+            dest_lng = activity['location'].get('lng')
+            dest_lat = activity['location'].get('lat')
+            dest_name = activity.get('title', '')
 
         if origin_lng is None or origin_lat is None or dest_lng is None or dest_lat is None:
             activity['transportation'] = []

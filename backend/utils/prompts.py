@@ -6,6 +6,65 @@ AI提示词模板模块
 from typing import List, Dict, Any
 
 
+# 旅行风格Persona定义
+STYLE_PERSONAS = {
+    "photography": """
+你是一位专业旅行摄影师。在规划行程时，请特别注意：
+- 优先推荐摄影热门地点和最佳拍摄时间（例如：日出、日落、黄金时刻）
+- 标注每个景点的最佳拍摄角度和机位
+- 考虑光线条件：避免正午强光，选择早晚柔和光线
+- 推荐适合拍照的咖啡厅、观景台等场所
+- 提醒天气对摄影的影响（阴天、雨天的拍摄建议）
+""",
+    "foodie": """
+你是一位美食评论家和旅行家。在规划行程时，请特别注意：
+- 优先推荐当地特色美食和米其林/高评分餐厅
+- 标注每家餐厅的招牌菜、人均消费、营业时间
+- 合理安排用餐时间：避开用餐高峰期，预留品尝时间
+- 推荐地道小吃、街边美食、夜市等体验
+- 考虑食物的季节性和地域特色
+- 为美食活动预留充足时间（至少1.5-2小时）
+""",
+    "adventure": """
+你是一位户外探险爱好者。在规划行程时，请特别注意：
+- 优先推荐徒步路线、登山、骑行、水上活动等户外体验
+- 标注每个活动的难度等级、所需装备、体力要求
+- 评估天气对户外活动的影响（雨天取消、高温调整）
+- 预留充足的活动时间和休息时间
+- 提醒安全注意事项和应急准备
+- 推荐沿途补给点和休息区
+""",
+    "culture": """
+你是一位文化历史学者。在规划行程时，请特别注意：
+- 优先推荐博物馆、古迹、历史遗址、艺术展览
+- 提供每个文化场所的历史背景和参观亮点
+- 标注讲解服务、导览时间、特展信息
+- 为深度参观预留充足时间（大型博物馆至少3-4小时）
+- 推荐相关的文化体验活动（传统手工艺、文化讲座等）
+- 考虑开放时间和周一闭馆等限制
+""",
+    "relaxation": """
+你是一位休闲度假专家。在规划行程时，请特别注意：
+- 优先推荐舒适悠闲的活动：温泉、SPA、公园漫步、茶馆
+- 避免过度紧凑的行程，确保充足的休息时间
+- 推荐景色优美、适合放松的场所
+- 选择舒适度高的酒店和餐厅
+- 每天安排不超过3-4个活动，留出自由活动时间
+- 推荐适合冥想、瑜伽、阅读的安静场所
+""",
+    "family": """
+你是一位亲子旅行专家。在规划行程时，请特别注意：
+- 优先推荐适合全家的场所：动物园、水族馆、主题乐园、科技馆
+- 考虑儿童的年龄和体力：避免过长步行，安排中午休息
+- 推荐设施完善的场所（母婴室、无障碍设施）
+- 选择亲子友好的餐厅和酒店
+- 标注每个场所的儿童票价和适合年龄
+- 预留应急时间（孩子需要休息、换尿布等）
+- 避免危险性高或需要长时间安静的活动
+"""
+}
+
+
 def poi_to_prompt_line(poi: Dict[str, Any]) -> str:
     """
     将POI信息格式化为提示词中的一行。
@@ -84,18 +143,44 @@ def build_itinerary_generation_prompt(
     shopping_pois_str = '\n'.join([poi_to_prompt_line(poi) for poi in shopping_pois[:25]]) if shopping_pois else "暂无数据"
     parent_child_pois_str = '\n'.join([poi_to_prompt_line(poi) for poi in parent_child_pois[:25]]) if parent_child_pois else "暂无数据"
 
-    # 格式化天气信息
+    # 格式化天气信息和天气建议
     weather_str = "暂无数据"
+    weather_guidance = ""
     if weather_data and weather_data.get('forecasts'):
         forecasts = weather_data['forecasts'][0].get('casts', []) if weather_data['forecasts'] else []
         if forecasts:
             weather_lines = []
+            has_rain = False
             for forecast in forecasts:
-                line = f"- 日期: {forecast.get('date', '未知')}, 天气: {forecast.get('dayweather', '未知')}/{forecast.get('nightweather', '未知')}, 温度: {forecast.get('nighttemp', '未知')}-{forecast.get('daytemp', '未知')}°C"
+                day_weather = forecast.get('dayweather', '未知')
+                line = f"- 日期: {forecast.get('date', '未知')}, 天气: {day_weather}/{forecast.get('nightweather', '未知')}, 温度: {forecast.get('nighttemp', '未知')}-{forecast.get('daytemp', '未知')}°C"
                 weather_lines.append(line)
+                if any(keyword in day_weather for keyword in ['雨', '雪', '冰雹']):
+                    has_rain = True
             weather_str = '\n'.join(weather_lines)
 
+            # 添加天气建议
+            if has_rain:
+                weather_guidance = """
+**天气建议**：
+- 预报有降雨天气，请优先安排室内活动（博物馆、美术馆、购物中心、室内游乐场等）
+- 户外景点建议安排在天气较好的日子
+- 雨天出行请携带雨具，注意路面湿滑
+- 可以将雨天作为体验当地咖啡馆、茶馆、特色餐厅的好时机
+"""
+
+    # 获取旅行风格Persona
+    persona_prompt = ""
+    if travel_styles and len(travel_styles) > 0:
+        primary_style = travel_styles[0]  # 使用第一个风格作为主要Persona
+        if primary_style in STYLE_PERSONAS:
+            persona_prompt = f"""
+**旅行风格定位**：
+{STYLE_PERSONAS[primary_style]}
+"""
+
     prompt = f"""
+{persona_prompt}
 请为用户规划一个从{origin_city if origin_city else '出发地'}到{destination_city}的旅游行程。
 出行日期: {start_date} 至 {end_date}
 预算: {budget if budget_type == 'preset' else f'自定义 {custom_budget}'}
@@ -126,7 +211,13 @@ def build_itinerary_generation_prompt(
 天气信息：
 {weather_str}
 
-请结合高德地图的数据，提供详细的每日行程安排，包括：
+{weather_guidance}
+
+**多出入口景点优化提示**：
+对于大型景点（如故宫、颐和园、天坛等），系统会自动为您选择最优的出入口，以减少回头路和步行距离。
+在描述活动时，如果您知道推荐的入口/出口（如"故宫午门"、"颐和园东宫门"），可以标注出来，但这不是强制要求。
+
+请结合高德地图的数据和天气情况，提供详细的每日行程安排，包括：
 1. 每天的具体活动安排（时间、地点、活动内容、预计停留时间）
 2. 推荐的交通方式和路线规划
 3. **必须根据预算和行程，从提供的酒店列表中动态推荐住宿地点，
