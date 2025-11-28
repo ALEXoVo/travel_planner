@@ -91,7 +91,7 @@ class Config:
     # 交通方式选择阈值（米）
     TRANSPORT_THRESHOLD = {
         'walking': 1000,      # <1km 步行
-        'transit': 5000,      # 1-5km 公交/地铁
+        'transit': 10000,      # 1-5km 公交/地铁
         'driving': float('inf')  # >5km 驾车/打车
     }
 

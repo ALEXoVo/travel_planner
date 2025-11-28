@@ -101,6 +101,7 @@ def build_itinerary_generation_prompt(
     custom_budget: str,
     travelers: int,
     travel_styles: List[str],
+    custom_prompt: str,
     destination_pois: List[Dict],
     food_pois: List[Dict],
     hotel_pois: List[Dict],
@@ -123,6 +124,7 @@ def build_itinerary_generation_prompt(
         custom_budget: 自定义预算
         travelers: 出行人数
         travel_styles: 旅游风格列表
+        custom_prompt: 自定义需求
         destination_pois: 景点POI列表
         food_pois: 美食POI列表
         hotel_pois: 酒店POI列表
@@ -179,6 +181,16 @@ def build_itinerary_generation_prompt(
 {STYLE_PERSONAS[primary_style]}
 """
 
+    # 处理自定义需求
+    custom_requirements = ""
+    if custom_prompt and custom_prompt.strip():
+        custom_requirements = f"""
+**用户自定义需求**：
+{custom_prompt}
+
+请务必在规划行程时充分考虑上述自定义需求，并在行程安排中体现。
+"""
+
     prompt = f"""
 {persona_prompt}
 请为用户规划一个从{origin_city if origin_city else '出发地'}到{destination_city}的旅游行程。
@@ -186,6 +198,8 @@ def build_itinerary_generation_prompt(
 预算: {budget if budget_type == 'preset' else f'自定义 {custom_budget}'}
 出行人数: {travelers}人
 旅游风格: {', '.join(travel_styles) if travel_styles else '无特定偏好'}
+
+{custom_requirements}
 
 以下是通过高德地图API获取的{destination_city}相关信息，请结合这些真实数据规划行程。
 请特别注意POI后的**坐标信息 (lng,lat)**，这是您进行合理路线规划的关键输入：

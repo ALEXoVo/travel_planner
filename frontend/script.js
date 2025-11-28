@@ -31,7 +31,8 @@ let userPreferences = {
     customBudget: '',
     travelers: 1,
     groupType: [],
-    travelStyles: []
+    travelStyles: [],
+    customPrompt: ''
 };
 
 let itinerary = [];
@@ -374,7 +375,8 @@ async function generateItineraryWithAI() {
     userPreferences.budgetType = budgetTypeSelect.value;
     userPreferences.customBudget = customBudgetInput.value;
     userPreferences.travelers = travelersSelect.value;
-    
+    userPreferences.customPrompt = document.getElementById('custom-prompt').value.trim();
+
     console.log('User preferences:', userPreferences);
     
     // 验证必填字段
@@ -424,7 +426,8 @@ async function generateItineraryWithAI() {
                 budget: userPreferences.budget,
                 customBudget: userPreferences.customBudget,
                 travelers: userPreferences.travelers,
-                travelStyles: userPreferences.travelStyles
+                travelStyles: userPreferences.travelStyles,
+                customPrompt: userPreferences.customPrompt
             }),
             signal: controller.signal
         });

@@ -73,6 +73,7 @@ class ItineraryBuilder:
         custom_budget = user_preferences.get('customBudget')
         travelers = user_preferences.get('travelers', 1)
         travel_styles = user_preferences.get('travelStyles', [])
+        custom_prompt = user_preferences.get('customPrompt', '')  # 自定义需求
 
         # 3. 计算天数
         days = self._calculate_days(start_date, end_date)
@@ -95,6 +96,7 @@ class ItineraryBuilder:
             custom_budget=custom_budget,
             travelers=travelers,
             travel_styles=travel_styles,
+            custom_prompt=custom_prompt,
             poi_data=poi_data,
             weather_data=weather_data,
             days=days
@@ -210,6 +212,7 @@ class ItineraryBuilder:
         custom_budget: str,
         travelers: int,
         travel_styles: List[str],
+        custom_prompt: str,
         poi_data: Dict[str, List],
         weather_data: Dict[str, Any],
         days: int
@@ -231,6 +234,7 @@ class ItineraryBuilder:
             custom_budget=custom_budget,
             travelers=travelers,
             travel_styles=travel_styles,
+            custom_prompt=custom_prompt,
             destination_pois=poi_data['destination'],
             food_pois=poi_data['food'],
             hotel_pois=poi_data['hotel'],
