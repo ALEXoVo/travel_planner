@@ -6,14 +6,17 @@ Travel Planner Backend Application
 """
 from flask import Flask, jsonify
 from flask_cors import CORS
+from flask_login import LoginManager
 import logging
 import os
 from datetime import timedelta
 
 from config import Config
+from models import db
 from routes.itinerary import itinerary_bp
 from routes.map import map_bp
 from routes.poi import poi_bp
+from routes.auth import auth_bp
 
 # 配置日志
 logging.basicConfig(
@@ -41,14 +44,36 @@ def create_app():
     app.config['SESSION_PERMANENT'] = True
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)
 
-    # 配置CORS
-    CORS(app, resources=Config.CORS_RESOURCES)
+    # 🆕 数据库配置
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///travelplanner.db'
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+    # 配置CORS - 支持携带Cookie
+    CORS(app, resources=Config.CORS_RESOURCES, supports_credentials=True)
+
+    # 🆕 初始化数据库
+    db.init_app(app)
+
+    # 🆕 初始化Flask-Login
+    login_manager = LoginManager()
+    login_manager.init_app(app)
+    login_manager.login_view = 'auth.login'
+
+    @login_manager.user_loader
+    def load_user(user_id):
+        from models.user import User
+        return User.query.get(int(user_id))
 
     # 注册路由蓝图
     register_blueprints(app)
 
     # 注册错误处理器
     register_error_handlers(app)
+
+    # 🆕 创建数据库表
+    with app.app_context():
+        db.create_all()
+        logger.info("Database tables created")
 
     # 验证API密钥
     Config.validate_api_keys()
@@ -62,10 +87,19 @@ def create_app():
             "version": "2.0",
             "status": "running",
             "endpoints": {
+                "auth": {
+                    "register": "POST /api/auth/register",
+                    "login": "POST /api/auth/login",
+                    "logout": "POST /api/auth/logout",
+                    "me": "GET /api/auth/me"
+                },
                 "itinerary": {
                     "generate": "POST /api/itinerary/generate",
                     "generate_from_user_pois": "POST /api/itinerary/generate-from-user-pois",
-                    "chat": "POST /api/assistant/chat"
+                    "chat": "POST /api/assistant/chat",
+                    "history": "GET /api/itinerary/history",
+                    "detail": "GET /api/itinerary/history/<id>",
+                    "delete": "DELETE /api/itinerary/history/<id>"
                 },
                 "map": {
                     "route_planning": "POST /api/route/planning",
@@ -96,8 +130,9 @@ def register_blueprints(app: Flask):
     app.register_blueprint(itinerary_bp)
     app.register_blueprint(map_bp)
     app.register_blueprint(poi_bp)
+    app.register_blueprint(auth_bp)
 
-    logger.info("Blueprints registered: itinerary, map, poi")
+    logger.info("Blueprints registered: itinerary, map, poi, auth")
 
 
 def register_error_handlers(app: Flask):

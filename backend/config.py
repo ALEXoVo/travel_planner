@@ -99,7 +99,40 @@ class Config:
     TRANSPORT_MODES = {
         'walking': '步行',
         'transit': '公交/地铁',
-        'driving': '驾车/打车'
+        'driving': '驾车/打车',
+        'cycling': '骑行'  # 🆕 新增骑行方式
+    }
+
+    # 🆕 多方案交通选择规则（米）
+    TRANSPORT_OPTIONS_RULES = {
+        'driving': {
+            'enabled': True,  # 永远启用
+            'threshold': None
+        },
+        'transit': {
+            'enabled': True,
+            'threshold': 1000,  # 距离 > 1km
+            'operator': '>'
+        },
+        'walking': {
+            'enabled': True,
+            'threshold': 2000,  # 距离 < 2km
+            'operator': '<'
+        },
+        'cycling': {
+            'enabled': True,
+            'threshold': 5000,  # 距离 < 5km
+            'operator': '<'
+        }
+    }
+
+    # 🆕 天气/路况提示配置
+    TRANSPORT_TIPS_CONFIG = {
+        'rain_keywords': ['雨', '雪', '雾'],
+        'rush_hours': [
+            (7, 9),   # 早高峰 7:00-9:00
+            (17, 19)  # 晚高峰 17:00-19:00
+        ]
     }
 
     # AI生成配置

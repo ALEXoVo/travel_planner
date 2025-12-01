@@ -342,7 +342,8 @@ class ItineraryBuilder:
                     day_index=day_index,
                     all_days=itinerary_data['itinerary'],
                     destination_city=destination_city,
-                    origin_coords=origin_coords
+                    origin_coords=origin_coords,
+                    weather_data=weather_data  # 🆕 传入天气数据
                 )
 
         return itinerary_data
@@ -374,7 +375,8 @@ class ItineraryBuilder:
         day_index: int,
         all_days: List[Dict],
         destination_city: str,
-        origin_coords: Optional[tuple]
+        origin_coords: Optional[tuple],
+        weather_data: Optional[Dict] = None
     ) -> None:
         """
         增强活动信息：坐标、交通。
@@ -385,6 +387,7 @@ class ItineraryBuilder:
             all_days: 所有天的行程
             destination_city: 目的地城市
             origin_coords: 出发地坐标
+            weather_data: 天气数据（用于生成交通提示）
         """
         activities = day.get('activities', [])
         previous_day_activities = []
@@ -436,6 +439,10 @@ class ItineraryBuilder:
         for i, activity in enumerate(activities):
             # 计算交通信息（跳过第一天的第一个活动）
             if not (day_index == 0 and i == 0):
+                # 估算当前活动时间（假设第一天9点开始，每个活动间隔2小时）
+                estimated_hour = 9 + day_index + (i * 2)
+                current_time = f"{estimated_hour % 24:02d}:00"
+
                 self._calculate_transportation(
                     activity=activity,
                     activity_index=i,
@@ -444,10 +451,12 @@ class ItineraryBuilder:
                     is_first_of_day=(i == 0),
                     destination_city=destination_city,
                     origin_coords=origin_coords,
-                    is_first_day=(day_index == 0)
+                    is_first_day=(day_index == 0),
+                    weather_data=weather_data,  # 🆕 传入天气数据
+                    current_time=current_time   # 🆕 传入当前时间
                 )
             else:
-                activity['transportation'] = []
+                activity['transportation_options'] = []  # 🔧 修正字段名
 
     def _resolve_activity_coordinates(
         self,
@@ -501,14 +510,20 @@ class ItineraryBuilder:
         is_first_of_day: bool,
         destination_city: str,
         origin_coords: Optional[tuple],
-        is_first_day: bool
+        is_first_day: bool,
+        weather_data: Optional[Dict] = None,
+        current_time: str = "09:00"
     ) -> None:
-        """计算交通信息（支持多出入口优化）"""
-        # 确定起点（优先使用前一个活动的出口门）
+        """
+        计算多方案交通信息（支持多出入口优化）
+
+        新增参数：
+            weather_data: 天气数据（用于生成提示）
+            current_time: 当前时间（用于判断高峰期）
+        """
+        # === 1. 确定起点（保持原逻辑，优先使用前一个活动的出口门）===
         if is_first_of_day and previous_day_activities:
-            # 新一天的第一个活动，起点是前一天最后一个活动
             prev_activity = previous_day_activities[-1]
-            # 使用出口门坐标（如果有）
             if 'exit_gate' in prev_activity and prev_activity['exit_gate']:
                 origin_lng = prev_activity['exit_gate'].get('lng')
                 origin_lat = prev_activity['exit_gate'].get('lat')
@@ -518,9 +533,7 @@ class ItineraryBuilder:
                 origin_lat = prev_activity['location'].get('lat')
                 origin_name = prev_activity.get('title', '')
         elif not is_first_of_day:
-            # 当天非第一个活动，起点是前一个活动
             prev_activity = activities[activity_index - 1]
-            # 使用出口门坐标（如果有）
             if 'exit_gate' in prev_activity and prev_activity['exit_gate']:
                 origin_lng = prev_activity['exit_gate'].get('lng')
                 origin_lat = prev_activity['exit_gate'].get('lat')
@@ -530,63 +543,184 @@ class ItineraryBuilder:
                 origin_lat = prev_activity['location'].get('lat')
                 origin_name = prev_activity.get('title', '')
         else:
-            # 这种情况应该在外层被跳过
-            activity['transportation'] = []
+            activity['transportation_options'] = []
             return
 
-        # 确定终点（优先使用当前活动的入口门）
+        # === 2. 确定终点（优先使用当前活动的入口门）===
         if 'entry_gate' in activity and activity['entry_gate']:
             dest_lng = activity['entry_gate'].get('lng')
             dest_lat = activity['entry_gate'].get('lat')
-            dest_name = activity.get('title', '') + f"({activity['entry_gate'].get('name', '入口')})"
         else:
             dest_lng = activity['location'].get('lng')
             dest_lat = activity['location'].get('lat')
-            dest_name = activity.get('title', '')
 
         if origin_lng is None or origin_lat is None or dest_lng is None or dest_lat is None:
-            activity['transportation'] = []
+            activity['transportation_options'] = []
             return
 
-        # 计算路线
         origin_str = f"{origin_lng},{origin_lat}"
         dest_str = f"{dest_lng},{dest_lat}"
 
-        # 获取估算距离
-        distance, duration_s = self.amap_service.get_distance(origin_str, dest_str)
+        # === 3. 获取估算距离 ===
+        distance, _ = self.amap_service.get_distance(origin_str, dest_str)
 
         if distance == 0:
-            activity['transportation'] = []
+            activity['transportation_options'] = []
             return
 
-        # 选择交通方式
-        mode = self._select_transport_mode(distance)
+        # === 4. 生成多个交通方案 ===
+        options = []
 
-        # 获取详细路线
-        distance, duration, polyline = self._get_route_by_mode(
-            origin_str, dest_str, mode, destination_city
-        )
-
-        if distance > 0:
-            if 'transportation' not in activity:
-                activity['transportation'] = []
-
-            activity['transportation'].append({
-                "from_location": origin_name,
-                "mode": mode,
-                "distance": f"{distance / 1000:.1f}公里",
-                "duration": f"{duration // 60}分钟",
-                "polyline": polyline
+        # 4.1 驾车方案（永远添加）
+        driving_dist, driving_dur, driving_poly = self.amap_service.get_driving_route(origin_str, dest_str)
+        if driving_dist > 0:
+            options.append({
+                'mode': Config.TRANSPORT_MODES['driving'],
+                'mode_key': 'driving',
+                'distance': driving_dist,
+                'duration': driving_dur,
+                'distance_text': f"{driving_dist / 1000:.1f}公里",
+                'duration_text': f"{driving_dur // 60}分钟" if driving_dur >= 60 else f"{driving_dur}秒",
+                'polyline': driving_poly,
+                'tips': []
             })
 
+        # 4.2 公交方案（距离 > 1km）
+        if distance > Config.TRANSPORT_OPTIONS_RULES['transit']['threshold']:
+            transit_dist, transit_dur, transit_poly = self.amap_service.get_transit_route(
+                origin_str, dest_str, destination_city
+            )
+            if transit_dist > 0:
+                options.append({
+                    'mode': Config.TRANSPORT_MODES['transit'],
+                    'mode_key': 'transit',
+                    'distance': transit_dist,
+                    'duration': transit_dur,
+                    'distance_text': f"{transit_dist / 1000:.1f}公里",
+                    'duration_text': f"{transit_dur // 60}分钟" if transit_dur >= 60 else f"{transit_dur}秒",
+                    'polyline': transit_poly,
+                    'tips': []
+                })
+
+        # 4.3 步行方案（距离 < 2km）
+        if distance < Config.TRANSPORT_OPTIONS_RULES['walking']['threshold']:
+            walking_dist, walking_dur, walking_poly = self.amap_service.get_walking_route(origin_str, dest_str)
+            if walking_dist > 0:
+                options.append({
+                    'mode': Config.TRANSPORT_MODES['walking'],
+                    'mode_key': 'walking',
+                    'distance': walking_dist,
+                    'duration': walking_dur,
+                    'distance_text': f"{walking_dist / 1000:.1f}公里",
+                    'duration_text': f"{walking_dur // 60}分钟" if walking_dur >= 60 else f"{walking_dur}秒",
+                    'polyline': walking_poly,
+                    'tips': []
+                })
+
+        # 4.4 骑行方案（距离 < 5km）
+        if distance < Config.TRANSPORT_OPTIONS_RULES['cycling']['threshold']:
+            cycling_dist, cycling_dur, cycling_poly = self.amap_service.get_cycling_route(origin_str, dest_str)
+            if cycling_dist > 0:
+                options.append({
+                    'mode': Config.TRANSPORT_MODES['cycling'],
+                    'mode_key': 'cycling',
+                    'distance': cycling_dist,
+                    'duration': cycling_dur,
+                    'distance_text': f"{cycling_dist / 1000:.1f}公里",
+                    'duration_text': f"{cycling_dur // 60}分钟" if cycling_dur >= 60 else f"{cycling_dur}秒",
+                    'polyline': cycling_poly,
+                    'tips': []
+                })
+
+        # === 5. 为每个方案生成智能提示 ===
+        for option in options:
+            option['tips'] = self._generate_transport_tips(
+                mode_key=option['mode_key'],
+                weather_data=weather_data,
+                current_time=current_time,
+                distance=option['distance']
+            )
+
+        # === 6. 保存到activity ===
+        activity['transportation_options'] = options
+        activity['from_location'] = origin_name  # 保留起点信息（用于前端显示）
+
     def _select_transport_mode(self, distance: int) -> str:
-        """根据距离选择交通方式"""
+        """根据距离选择交通方式（已弃用，保留向后兼容）"""
         if distance < Config.TRANSPORT_THRESHOLD['walking']:
             return Config.TRANSPORT_MODES['walking']
         elif distance < Config.TRANSPORT_THRESHOLD['transit']:
             return Config.TRANSPORT_MODES['transit']
         else:
             return Config.TRANSPORT_MODES['driving']
+
+    def _generate_transport_tips(
+        self,
+        mode_key: str,
+        weather_data: Optional[Dict],
+        current_time: str,
+        distance: int
+    ) -> List[str]:
+        """
+        生成交通方式智能提示
+
+        Args:
+            mode_key: 'driving' | 'transit' | 'walking' | 'cycling'
+            weather_data: 天气数据 {'forecasts': [...]}
+            current_time: "HH:MM"
+            distance: 距离（米）
+
+        Returns:
+            提示列表 ["今日有雨，建议携带雨具", ...]
+        """
+        tips = []
+
+        # 1. 天气提示
+        if weather_data and weather_data.get('forecasts'):
+            today_weather = weather_data['forecasts'][0]
+            casts = today_weather.get('casts', [{}])
+            dayweather = casts[0].get('dayweather', '') if casts else ''
+
+            # 检查是否有雨雪雾
+            has_bad_weather = any(
+                keyword in dayweather
+                for keyword in Config.TRANSPORT_TIPS_CONFIG['rain_keywords']
+            )
+
+            if has_bad_weather:
+                if mode_key == 'walking':
+                    tips.append(f"今日{dayweather}，建议携带雨具")
+                elif mode_key == 'cycling':
+                    tips.append(f"今日{dayweather}，骑行路滑注意安全，建议选择其他方式")
+                elif mode_key == 'transit':
+                    tips.append(f"今日{dayweather}，公共交通较为舒适")
+                elif mode_key == 'driving':
+                    tips.append(f"今日{dayweather}，驾车请减速慢行")
+
+        # 2. 高峰期提示（仅驾车和公交）
+        try:
+            hour = int(current_time.split(':')[0])
+            is_rush_hour = any(
+                start <= hour < end
+                for start, end in Config.TRANSPORT_TIPS_CONFIG['rush_hours']
+            )
+
+            if is_rush_hour:
+                if mode_key == 'driving':
+                    tips.append("当前时段可能拥堵，建议预留充足时间或选择公共交通")
+                elif mode_key == 'transit':
+                    tips.append("高峰期公交可能较为拥挤")
+        except Exception:
+            pass
+
+        # 3. 距离适宜性提示
+        if mode_key == 'walking' and distance > 1500:
+            tips.append(f"步行距离较远（{distance/1000:.1f}km），请根据体力选择")
+
+        if mode_key == 'cycling' and distance > 4000:
+            tips.append(f"骑行距离较远（{distance/1000:.1f}km），请注意安全")
+
+        return tips
 
     def _get_route_by_mode(
         self,

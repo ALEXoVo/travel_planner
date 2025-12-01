@@ -4,9 +4,13 @@
 处理行程生成和AI聊天助手的API端点。
 """
 from flask import Blueprint, request, jsonify, session
+from flask_login import current_user, login_required
 from datetime import datetime
 import logging
+import json
 
+from models import db
+from models.itinerary import Itinerary, ItineraryDay
 from services.itinerary_builder import ItineraryBuilder
 from services.user_poi_itinerary_builder import UserPoiItineraryBuilder
 from services.ai_service import AIService
@@ -54,7 +58,57 @@ def generate_itinerary():
         # 构建行程
         itinerary = builder.build_itinerary(data)
 
-        return jsonify(itinerary)
+        # 🆕 如果用户已登录，保存到数据库
+        itinerary_id = None
+        if current_user.is_authenticated:
+            try:
+                # 解析日期
+                start_date_obj = datetime.strptime(data.get('startDate'), '%Y-%m-%d').date()
+                end_date_obj = datetime.strptime(data.get('endDate'), '%Y-%m-%d').date()
+
+                # 生成标题
+                destination_city = data.get('destinationCity')
+                num_days = len(itinerary.get('itinerary', []))
+                title = f"{destination_city}{num_days}日游"
+
+                # 创建行程记录
+                itinerary_record = Itinerary(
+                    user_id=current_user.id,
+                    title=title,
+                    destination_city=destination_city,
+                    origin_city=data.get('originCity'),
+                    start_date=start_date_obj,
+                    end_date=end_date_obj,
+                    budget=data.get('budget'),
+                    travelers=data.get('travelers'),
+                    travel_styles=json.dumps(data.get('travelStyles', [])),
+                    summary=json.dumps(itinerary.get('summary', {}))
+                )
+                db.session.add(itinerary_record)
+                db.session.flush()  # 获取itinerary.id
+
+                # 保存每天的活动
+                for day_data in itinerary.get('itinerary', []):
+                    day = ItineraryDay(
+                        itinerary_id=itinerary_record.id,
+                        day_number=day_data.get('day'),
+                        activities=json.dumps(day_data.get('activities', []))
+                    )
+                    db.session.add(day)
+
+                db.session.commit()
+                itinerary_id = itinerary_record.id
+                logger.info(f"Itinerary saved to DB: user={current_user.username}, id={itinerary_id}")
+
+            except Exception as e:
+                db.session.rollback()
+                logger.error(f"Failed to save itinerary to DB: {str(e)}")
+                # 不影响行程返回，继续执行
+
+        # 返回结果（新增itinerary_id字段）
+        result = itinerary.copy()
+        result['itinerary_id'] = itinerary_id
+        return jsonify(result)
 
     except ValueError as e:
         logger.error(f"Validation error: {str(e)}")
@@ -245,3 +299,100 @@ def generate_itinerary_from_user_pois():
             "error": "无法生成行程计划，请稍后重试",
             "details": str(e)
         }), 500
+
+
+# 🆕 ========== 行程历史管理 ========== #
+
+@itinerary_bp.route('/api/itinerary/history', methods=['GET'])
+@login_required
+def get_itinerary_history():
+    """
+    获取用户行程历史列表
+
+    查询参数：
+    - page: 页码（默认1）
+    - per_page: 每页数量（默认10）
+    - destination_city: 过滤目的地（可选）
+    """
+    try:
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 10, type=int)
+        destination_city = request.args.get('destination_city', '').strip()
+
+        # 构建查询
+        query = Itinerary.query.filter_by(user_id=current_user.id)
+
+        if destination_city:
+            query = query.filter_by(destination_city=destination_city)
+
+        # 分页查询
+        pagination = query.order_by(Itinerary.created_at.desc()).paginate(
+            page=page,
+            per_page=per_page,
+            error_out=False
+        )
+
+        # 序列化结果（不包含详细活动，减少数据量）
+        items = [itinerary.to_dict(include_days=False) for itinerary in pagination.items]
+
+        return jsonify({
+            'items': items,
+            'total': pagination.total,
+            'page': page,
+            'per_page': per_page,
+            'pages': pagination.pages
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Get itinerary history error: {str(e)}")
+        return jsonify({'error': '获取历史行程失败'}), 500
+
+
+@itinerary_bp.route('/api/itinerary/history/<int:itinerary_id>', methods=['GET'])
+@login_required
+def get_itinerary_detail(itinerary_id):
+    """
+    获取行程详情（包含完整活动数据）
+    """
+    try:
+        itinerary = Itinerary.query.filter_by(
+            id=itinerary_id,
+            user_id=current_user.id  # 确保只能查看自己的行程
+        ).first()
+
+        if not itinerary:
+            return jsonify({'error': '行程不存在或无权访问'}), 404
+
+        return jsonify(itinerary.to_dict(include_days=True)), 200
+
+    except Exception as e:
+        logger.error(f"Get itinerary detail error: {str(e)}")
+        return jsonify({'error': '获取行程详情失败'}), 500
+
+
+@itinerary_bp.route('/api/itinerary/history/<int:itinerary_id>', methods=['DELETE'])
+@login_required
+def delete_itinerary(itinerary_id):
+    """
+    删除行程
+    """
+    try:
+        itinerary = Itinerary.query.filter_by(
+            id=itinerary_id,
+            user_id=current_user.id
+        ).first()
+
+        if not itinerary:
+            return jsonify({'error': '行程不存在或无权删除'}), 404
+
+        db.session.delete(itinerary)
+        db.session.commit()
+
+        logger.info(f"Itinerary deleted: id={itinerary_id}, user={current_user.username}")
+
+        return jsonify({'message': '删除成功'}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Delete itinerary error: {str(e)}")
+        return jsonify({'error': '删除失败'}), 500

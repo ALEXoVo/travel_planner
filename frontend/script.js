@@ -147,6 +147,24 @@ function initializeDOMElements() {
     closeModalBtn = document.getElementById('close-modal');
     confirmModalBtn = document.getElementById('confirm-modal');
 
+    // 认证相关元素
+    window.loginBtn = document.getElementById('login-btn');
+    window.registerBtn = document.getElementById('register-btn');
+    window.logoutBtn = document.getElementById('logout-btn');
+    window.authButtons = document.getElementById('auth-buttons');
+    window.userInfo = document.getElementById('user-info');
+    window.usernameDisplay = document.getElementById('username-display');
+    window.loginModal = document.getElementById('login-modal');
+    window.registerModal = document.getElementById('register-modal');
+    window.loginForm = document.getElementById('login-form');
+    window.registerForm = document.getElementById('register-form');
+
+    // POI管理相关元素
+    window.poiSearchInput = document.getElementById('poi-search-input');
+    window.searchPoiBtn = document.getElementById('search-poi-btn');
+    window.poiSearchResults = document.getElementById('poi-search-results');
+    window.userPoiList = document.getElementById('user-poi-list');
+
     console.log('DOM Elements initialized:', {
         newJourneyBtn,
         historyJourneyBtn,
@@ -201,7 +219,7 @@ function bindEventListeners() {
 
     if (historyJourneyBtn) {
         historyJourneyBtn.addEventListener('click', () => {
-            showMessage('功能待实现', '历史旅程功能还在开发中，敬请期待！');
+            showHistoryPage();
         });
     }
 
@@ -345,7 +363,60 @@ function bindEventListeners() {
             userPreferences.travelers = travelersSelect.value;
         });
     }
-    
+
+    // 认证相关事件监听器
+    if (window.loginBtn) {
+        window.loginBtn.addEventListener('click', () => showLoginModal());
+    }
+
+    if (window.registerBtn) {
+        window.registerBtn.addEventListener('click', () => showRegisterModal());
+    }
+
+    if (window.logoutBtn) {
+        window.logoutBtn.addEventListener('click', () => logout());
+    }
+
+    if (window.loginForm) {
+        window.loginForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            handleLogin();
+        });
+    }
+
+    if (window.registerForm) {
+        window.registerForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            handleRegister();
+        });
+    }
+
+    // POI管理相关事件监听器
+    if (window.searchPoiBtn) {
+        window.searchPoiBtn.addEventListener('click', () => searchPOI());
+    }
+
+    if (window.poiSearchInput) {
+        window.poiSearchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                searchPOI();
+            }
+        });
+    }
+
+    // 目的地城市变化时，加载该城市的POI列表
+    if (destinationCityInput) {
+        destinationCityInput.addEventListener('change', () => {
+            const city = destinationCityInput.value.trim();
+            if (city) {
+                loadUserPOIs(city);
+            }
+        });
+    }
+
+    // 检查登录状态
+    checkLoginStatus();
+
     console.log('Event listeners bound successfully');
 }
 
@@ -1001,3 +1072,537 @@ document.addEventListener('click', (e) => {
         }
     }
 });
+
+// ==================== 认证相关函数 ====================
+
+// 显示登录模态框
+function showLoginModal() {
+    window.loginModal.style.display = 'flex';
+    document.getElementById('login-username').value = '';
+    document.getElementById('login-password').value = '';
+    const errorDiv = document.getElementById('login-error');
+    if (errorDiv) {
+        errorDiv.style.display = 'none';
+    }
+}
+
+// 显示注册模态框
+function showRegisterModal() {
+    window.registerModal.style.display = 'flex';
+    document.getElementById('register-username').value = '';
+    document.getElementById('register-password').value = '';
+    document.getElementById('register-password-confirm').value = '';
+    document.getElementById('register-email').value = '';
+    const errorDiv = document.getElementById('register-error');
+    if (errorDiv) {
+        errorDiv.style.display = 'none';
+    }
+}
+
+// 关闭认证模态框
+function closeAuthModal(modalId) {
+    document.getElementById(modalId).style.display = 'none';
+}
+
+// 处理登录
+async function handleLogin() {
+    const username = document.getElementById('login-username').value.trim();
+    const password = document.getElementById('login-password').value;
+    const errorDiv = document.getElementById('login-error');
+    const submitBtn = document.getElementById('login-submit-btn');
+
+    if (!username || !password) {
+        errorDiv.textContent = '请填写用户名和密码';
+        errorDiv.style.display = 'block';
+        return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = '登录中...';
+
+    try {
+        const response = await fetch('http://localhost:8888/api/auth/login', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            credentials: 'include',
+            body: JSON.stringify({ username, password })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            closeAuthModal('login-modal');
+            showMessage('登录成功', `欢迎回来，${data.user.username}！`);
+            updateAuthUI(data.user);
+        } else {
+            errorDiv.textContent = data.error || '登录失败';
+            errorDiv.style.display = 'block';
+        }
+    } catch (error) {
+        console.error('Login error:', error);
+        errorDiv.textContent = '网络错误，请稍后重试';
+        errorDiv.style.display = 'block';
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '登录';
+    }
+}
+
+// 处理注册
+async function handleRegister() {
+    const username = document.getElementById('register-username').value.trim();
+    const password = document.getElementById('register-password').value;
+    const passwordConfirm = document.getElementById('register-password-confirm').value;
+    const email = document.getElementById('register-email').value.trim();
+    const errorDiv = document.getElementById('register-error');
+    const submitBtn = document.getElementById('register-submit-btn');
+
+    // 验证
+    if (!username || !password) {
+        errorDiv.textContent = '请填写用户名和密码';
+        errorDiv.style.display = 'block';
+        return;
+    }
+
+    if (username.length < 3 || username.length > 50) {
+        errorDiv.textContent = '用户名长度必须在3-50个字符之间';
+        errorDiv.style.display = 'block';
+        return;
+    }
+
+    if (password.length < 6) {
+        errorDiv.textContent = '密码长度至少6个字符';
+        errorDiv.style.display = 'block';
+        return;
+    }
+
+    if (password !== passwordConfirm) {
+        errorDiv.textContent = '两次输入的密码不一致';
+        errorDiv.style.display = 'block';
+        return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = '注册中...';
+
+    try {
+        const response = await fetch('http://localhost:8888/api/auth/register', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            credentials: 'include',
+            body: JSON.stringify({ username, password, email: email || undefined })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            closeAuthModal('register-modal');
+            showMessage('注册成功', '注册成功！已自动登录');
+            updateAuthUI(data.user);
+        } else {
+            errorDiv.textContent = data.error || '注册失败';
+            errorDiv.style.display = 'block';
+        }
+    } catch (error) {
+        console.error('Register error:', error);
+        errorDiv.textContent = '网络错误，请稍后重试';
+        errorDiv.style.display = 'block';
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '注册';
+    }
+}
+
+// 处理登出
+async function logout() {
+    try {
+        const response = await fetch('http://localhost:8888/api/auth/logout', {
+            method: 'POST',
+            credentials: 'include'
+        });
+
+        if (response.ok) {
+            showMessage('登出成功', '您已成功登出');
+            updateAuthUI(null);
+        }
+    } catch (error) {
+        console.error('Logout error:', error);
+        showMessage('错误', '登出失败，请稍后重试');
+    }
+}
+
+// 检查登录状态
+async function checkLoginStatus() {
+    try {
+        const response = await fetch('http://localhost:8888/api/auth/me', {
+            credentials: 'include'
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            updateAuthUI(data.user);
+        } else {
+            updateAuthUI(null);
+        }
+    } catch (error) {
+        console.error('Check login status error:', error);
+        updateAuthUI(null);
+    }
+}
+
+// 更新认证UI
+function updateAuthUI(user) {
+    if (user) {
+        window.authButtons.style.display = 'none';
+        window.userInfo.style.display = 'flex';
+        window.usernameDisplay.textContent = user.username;
+    } else {
+        window.authButtons.style.display = 'flex';
+        window.userInfo.style.display = 'none';
+    }
+}
+
+// ==================== 历史行程相关函数 ====================
+
+// 显示历史行程页面
+async function showHistoryPage() {
+    // 检查是否已登录
+    try {
+        const response = await fetch('http://localhost:8888/api/auth/me', {
+            credentials: 'include'
+        });
+
+        if (!response.ok) {
+            showMessage('请先登录', '查看历史行程需要登录，请先登录或注册');
+            showLoginModal();
+            return;
+        }
+
+        // 加载历史行程
+        loadHistoryItineraries();
+    } catch (error) {
+        console.error('Check auth error:', error);
+        showMessage('错误', '网络错误，请稍后重试');
+    }
+}
+
+// 加载历史行程列表
+async function loadHistoryItineraries(page = 1, city = '') {
+    try {
+        const params = new URLSearchParams({ page, per_page: 10 });
+        if (city) params.append('city', city);
+
+        const response = await fetch(`http://localhost:8888/api/itinerary/history?${params}`, {
+            credentials: 'include'
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            renderHistoryList(data);
+        } else {
+            showMessage('错误', '加载历史行程失败');
+        }
+    } catch (error) {
+        console.error('Load history error:', error);
+        showMessage('错误', '网络错误，请稍后重试');
+    }
+}
+
+// 渲染历史行程列表
+function renderHistoryList(data) {
+    // 创建历史行程界面HTML
+    const historyHTML = `
+        <div class="history-screen">
+            <div class="history-header">
+                <h2><i class="fas fa-history"></i> 历史行程</h2>
+                <button class="btn btn-secondary" onclick="backToWelcomeFromHistory()">
+                    <i class="fas fa-arrow-left"></i> 返回
+                </button>
+            </div>
+            <div class="history-filter">
+                <input type="text" id="city-filter" placeholder="筛选城市..." />
+                <button class="btn btn-primary" onclick="filterHistory()">筛选</button>
+            </div>
+            <div class="history-list" id="history-list">
+                ${data.items.map(item => `
+                    <div class="history-item" data-id="${item.id}">
+                        <div class="history-item-header">
+                            <h3>${item.title || item.destination_city + '之旅'}</h3>
+                            <span class="history-date">${item.created_at}</span>
+                        </div>
+                        <div class="history-item-details">
+                            <p><i class="fas fa-map-marker-alt"></i> ${item.destination_city}</p>
+                            <p><i class="fas fa-calendar"></i> ${item.start_date} 至 ${item.end_date}</p>
+                        </div>
+                        <div class="history-item-actions">
+                            <button class="btn btn-outline" onclick="loadHistoryItinerary(${item.id})">查看详情</button>
+                            <button class="btn btn-secondary" onclick="deleteHistory(${item.id})">删除</button>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+            <div class="history-pagination">
+                ${data.page > 1 ? `<button class="btn btn-outline" onclick="loadHistoryItineraries(${data.page - 1})">上一页</button>` : ''}
+                <span>第 ${data.page} / ${data.pages} 页</span>
+                ${data.page < data.pages ? `<button class="btn btn-outline" onclick="loadHistoryItineraries(${data.page + 1})">下一页</button>` : ''}
+            </div>
+        </div>
+    `;
+
+    // 隐藏其他界面，显示历史行程界面
+    welcomeScreen.style.display = 'none';
+    settingsScreen.style.display = 'none';
+    itineraryScreen.style.display = 'none';
+
+    // 将历史界面插入到main-panel中
+    const mainPanel = document.querySelector('.main-panel');
+    let historyScreen = document.getElementById('history-screen');
+    if (!historyScreen) {
+        historyScreen = document.createElement('div');
+        historyScreen.id = 'history-screen';
+        historyScreen.className = 'screen';
+        mainPanel.appendChild(historyScreen);
+    }
+    historyScreen.innerHTML = historyHTML;
+    historyScreen.style.display = 'block';
+}
+
+// 从历史界面返回欢迎界面
+function backToWelcomeFromHistory() {
+    const historyScreen = document.getElementById('history-screen');
+    if (historyScreen) {
+        historyScreen.style.display = 'none';
+    }
+    welcomeScreen.style.display = 'flex';
+}
+
+// 筛选历史行程
+function filterHistory() {
+    const city = document.getElementById('city-filter').value.trim();
+    loadHistoryItineraries(1, city);
+}
+
+// 加载历史行程详情
+async function loadHistoryItinerary(id) {
+    try {
+        const response = await fetch(`http://localhost:8888/api/itinerary/history/${id}`, {
+            credentials: 'include'
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            // 将历史行程数据转换为当前行程格式
+            itinerary = data.days.map(day => ({
+                day: day.day_number,
+                activities: JSON.parse(day.activities)
+            }));
+
+            // 设置用户偏好
+            userPreferences.destinationCity = data.destination_city;
+            userPreferences.startDate = data.start_date;
+            userPreferences.endDate = data.end_date;
+
+            // 显示行程界面
+            const historyScreen = document.getElementById('history-screen');
+            if (historyScreen) {
+                historyScreen.style.display = 'none';
+            }
+
+            // 生成行程显示
+            generateDailySessions(itinerary, JSON.parse(data.summary || '{}'));
+
+            settingsScreen.style.display = 'none';
+            itineraryScreen.style.display = 'block';
+        } else {
+            showMessage('错误', '加载行程详情失败');
+        }
+    } catch (error) {
+        console.error('Load itinerary detail error:', error);
+        showMessage('错误', '网络错误，请稍后重试');
+    }
+}
+
+// 删除历史行程
+async function deleteHistory(id) {
+    if (!confirm('确定要删除这条历史行程吗？')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`http://localhost:8888/api/itinerary/history/${id}`, {
+            method: 'DELETE',
+            credentials: 'include'
+        });
+
+        if (response.ok) {
+            showMessage('删除成功', '历史行程已删除');
+            // 重新加载列表
+            loadHistoryItineraries();
+        } else {
+            showMessage('错误', '删除失败');
+        }
+    } catch (error) {
+        console.error('Delete history error:', error);
+        showMessage('错误', '网络错误，请稍后重试');
+    }
+}
+
+// ==================== POI管理相关函数 ====================
+
+// 搜索POI
+async function searchPOI() {
+    const query = window.poiSearchInput.value.trim();
+    const city = destinationCityInput.value.trim();
+
+    if (!query) {
+        showMessage('提示', '请输入景点名称');
+        return;
+    }
+
+    if (!city) {
+        showMessage('提示', '请先选择目的地城市');
+        return;
+    }
+
+    try {
+        const response = await fetch(`http://localhost:8888/api/poi/autocomplete?query=${encodeURIComponent(query)}&city=${encodeURIComponent(city)}&limit=5`);
+
+        if (response.ok) {
+            const data = await response.json();
+            renderSearchResults(data.suggestions);
+        } else {
+            showMessage('错误', '搜索失败');
+        }
+    } catch (error) {
+        console.error('Search POI error:', error);
+        showMessage('错误', '网络错误，请稍后重试');
+    }
+}
+
+// 渲染搜索结果
+function renderSearchResults(suggestions) {
+    const resultsDiv = window.poiSearchResults;
+
+    if (suggestions.length === 0) {
+        resultsDiv.innerHTML = '<div class="poi-search-item"><div class="poi-search-item-name">未找到相关景点</div></div>';
+        resultsDiv.style.display = 'block';
+        return;
+    }
+
+    resultsDiv.innerHTML = suggestions.map(poi => `
+        <div class="poi-search-item" onclick="addPOI('${poi.id}', '${poi.name.replace(/'/g, "\\'")}', '${poi.location}', '${poi.type}')">
+            <div class="poi-search-item-name">${poi.name}</div>
+            <div class="poi-search-item-address">${poi.address}</div>
+        </div>
+    `).join('');
+
+    resultsDiv.style.display = 'block';
+}
+
+// 添加POI到用户列表
+async function addPOI(id, name, location, type) {
+    const city = destinationCityInput.value.trim();
+
+    if (!city) {
+        showMessage('提示', '请先选择目的地城市');
+        return;
+    }
+
+    try {
+        const response = await fetch('http://localhost:8888/api/user-pois/add', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            credentials: 'include',
+            body: JSON.stringify({
+                poi: { id, name, location, type },
+                city
+            })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            // 隐藏搜索结果
+            window.poiSearchResults.style.display = 'none';
+            window.poiSearchInput.value = '';
+
+            // 重新加载POI列表
+            loadUserPOIs(city);
+
+            showMessage('成功', `已添加 ${name}`);
+        } else {
+            showMessage('错误', data.error || '添加失败');
+        }
+    } catch (error) {
+        console.error('Add POI error:', error);
+        showMessage('错误', '网络错误，请稍后重试');
+    }
+}
+
+// 加载用户已添加的POI列表
+async function loadUserPOIs(city) {
+    if (!city) return;
+
+    try {
+        const response = await fetch(`http://localhost:8888/api/user-pois/list?city=${encodeURIComponent(city)}`, {
+            credentials: 'include'
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            renderUserPOIs(data.pois, city);
+        }
+    } catch (error) {
+        console.error('Load user POIs error:', error);
+    }
+}
+
+// 渲染用户POI列表
+function renderUserPOIs(pois, city) {
+    const listDiv = window.userPoiList;
+
+    if (!pois || pois.length === 0) {
+        listDiv.innerHTML = '<p class="poi-empty-hint">还没有添加景点，搜索并添加您想去的地方</p>';
+        return;
+    }
+
+    listDiv.innerHTML = pois.map(poi => `
+        <div class="poi-item">
+            <div class="poi-item-info">
+                <div class="poi-item-name">${poi.name}</div>
+                <div class="poi-item-type">${poi.type || '景点'}</div>
+            </div>
+            <div class="poi-item-actions">
+                <button class="btn btn-secondary" onclick="removePOI('${poi.id}', '${city}')">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        </div>
+    `).join('');
+}
+
+// 删除POI
+async function removePOI(poiId, city) {
+    try {
+        const response = await fetch(`http://localhost:8888/api/user-pois/remove/${poiId}?city=${encodeURIComponent(city)}`, {
+            method: 'DELETE',
+            credentials: 'include'
+        });
+
+        if (response.ok) {
+            loadUserPOIs(city);
+            showMessage('成功', 'POI已删除');
+        } else {
+            showMessage('错误', '删除失败');
+        }
+    } catch (error) {
+        console.error('Remove POI error:', error);
+        showMessage('错误', '网络错误，请稍后重试');
+    }
+}

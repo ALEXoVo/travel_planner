@@ -561,6 +561,99 @@ class AmapService:
             logger.error(f"Error getting driving route: {str(e)}")
             return 0, 0, ""
 
+    def get_cycling_route(
+        self,
+        origin: str,
+        destination: str
+    ) -> Tuple[int, int, str]:
+        """
+        获取骑行路线。
+
+        API文档：https://lbs.amap.com/api/webservice/guide/api/direction#bicycling
+
+        Args:
+            origin: 起点坐标 "lng,lat"
+            destination: 终点坐标 "lng,lat"
+
+        Returns:
+            Tuple[int, int, str]: (距离(米), 时间(秒), polyline字符串)
+        """
+        # 检查缓存
+        if self.cache:
+            cache_key = self.cache._generate_key(
+                method='get_cycling_route',
+                origin=origin,
+                destination=destination
+            )
+            cached_result = self.cache.get('route', cache_key)
+            if cached_result is not None:
+                return tuple(cached_result) if isinstance(cached_result, list) else cached_result
+
+        try:
+            params = {
+                'key': self.api_key,
+                'origin': origin,
+                'destination': destination
+            }
+
+            response = requests.get(
+                "https://restapi.amap.com/v4/direction/bicycling",
+                params=params,
+                timeout=self.timeout
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            # 检查API是否成功返回
+            if data.get('status') == '1' and data.get('data', {}).get('paths'):
+                path = data['data']['paths'][0]
+                distance = int(path.get('distance', 0))
+                duration = int(path.get('duration', 0))
+
+                # 提取polyline
+                steps = path.get('steps', [])
+                polylines = [step.get('polyline') for step in steps if step.get('polyline')]
+                polyline = ";".join(polylines)
+
+                result = (distance, duration, polyline)
+
+                # 写入缓存
+                if self.cache:
+                    self.cache.set('route', cache_key, list(result))
+
+                logger.info(f"Cycling route: {distance}m, {duration}s")
+                return result
+
+            # API失败，使用降级方案：步行路线 × 0.4系数（骑行约为步行速度的2.5倍）
+            logger.warning(f"Cycling API failed: {data.get('info')}, using fallback (walking × 0.4)")
+            walking_dist, walking_dur, walking_poly = self.get_walking_route(origin, destination)
+
+            if walking_dist > 0:
+                # 骑行速度约为步行的2.5倍，时间约为步行的40%
+                cycling_dist = walking_dist
+                cycling_dur = int(walking_dur * 0.4)
+                result = (cycling_dist, cycling_dur, walking_poly)
+
+                # 写入缓存
+                if self.cache:
+                    self.cache.set('route', cache_key, list(result))
+
+                logger.info(f"Cycling route (fallback): {cycling_dist}m, {cycling_dur}s")
+                return result
+
+            return 0, 0, ""
+
+        except Exception as e:
+            logger.error(f"Error getting cycling route: {str(e)}, trying fallback")
+            # 异常情况也使用降级方案
+            try:
+                walking_dist, walking_dur, walking_poly = self.get_walking_route(origin, destination)
+                if walking_dist > 0:
+                    return (walking_dist, int(walking_dur * 0.4), walking_poly)
+            except Exception:
+                pass
+            return 0, 0, ""
+
     def get_weather(self, city: str) -> Optional[Dict[str, Any]]:
         """
         获取城市天气信息。

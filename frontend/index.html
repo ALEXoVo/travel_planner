@@ -23,9 +23,13 @@
                     <li><a href="#">我的</a></li>
                 </ul>
             </nav>
-            <div class="auth-buttons">
-                <button class="btn btn-outline">登录</button>
-                <button class="btn btn-primary">注册</button>
+            <div class="auth-buttons" id="auth-buttons">
+                <button class="btn btn-outline" id="login-btn">登录</button>
+                <button class="btn btn-primary" id="register-btn">注册</button>
+            </div>
+            <div class="user-info" id="user-info" style="display: none;">
+                <span id="username-display"></span>
+                <button class="btn btn-outline" id="logout-btn">登出</button>
             </div>
         </div>
     </header>
@@ -43,6 +47,68 @@
             <div class="modal-footer">
                 <button class="btn btn-primary" id="confirm-modal">确定</button>
             </div>
+        </div>
+    </div>
+
+    <!-- 登录模态框 -->
+    <div id="login-modal" class="modal" style="display: none;">
+        <div class="modal-content auth-modal">
+            <div class="modal-header">
+                <h3><i class="fas fa-sign-in-alt"></i> 用户登录</h3>
+                <span class="close-btn" onclick="closeAuthModal('login-modal')">&times;</span>
+            </div>
+            <form id="login-form" onsubmit="return false;">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="login-username">用户名</label>
+                        <input type="text" id="login-username" class="form-control" placeholder="请输入用户名" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="login-password">密码</label>
+                        <input type="password" id="login-password" class="form-control" placeholder="请输入密码" required>
+                    </div>
+                    <div id="login-error" class="error-message" style="display: none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeAuthModal('login-modal')">取消</button>
+                    <button type="submit" class="btn btn-primary" id="login-submit-btn">登录</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 注册模态框 -->
+    <div id="register-modal" class="modal" style="display: none;">
+        <div class="modal-content auth-modal">
+            <div class="modal-header">
+                <h3><i class="fas fa-user-plus"></i> 用户注册</h3>
+                <span class="close-btn" onclick="closeAuthModal('register-modal')">&times;</span>
+            </div>
+            <form id="register-form" onsubmit="return false;">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="register-username">用户名</label>
+                        <input type="text" id="register-username" class="form-control" placeholder="3-50个字符" required minlength="3" maxlength="50">
+                    </div>
+                    <div class="form-group">
+                        <label for="register-password">密码</label>
+                        <input type="password" id="register-password" class="form-control" placeholder="至少6个字符" required minlength="6">
+                    </div>
+                    <div class="form-group">
+                        <label for="register-password-confirm">确认密码</label>
+                        <input type="password" id="register-password-confirm" class="form-control" placeholder="再次输入密码" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="register-email">邮箱（可选）</label>
+                        <input type="email" id="register-email" class="form-control" placeholder="example@email.com">
+                    </div>
+                    <div id="register-error" class="error-message" style="display: none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeAuthModal('register-modal')">取消</button>
+                    <button type="submit" class="btn btn-primary" id="register-submit-btn">注册</button>
+                </div>
+            </form>
         </div>
     </div>
 
@@ -216,8 +282,23 @@
                             <label>自定义需求（可选）</label>
                             <textarea id="custom-prompt" placeholder="例如：带着老人出行，尽量减少步行；想体验当地夜生活；对海鲜过敏需要避开海鲜餐厅等..." rows="3"></textarea>
                         </div>
+
+                        <!-- POI管理区域 -->
+                        <div class="form-group">
+                            <label>我想去的景点（可选）</label>
+                            <div class="poi-input-group">
+                                <input type="text" id="poi-search-input" placeholder="搜索景点名称..." />
+                                <button class="btn btn-outline" id="search-poi-btn" type="button">
+                                    <i class="fas fa-search"></i> 搜索
+                                </button>
+                            </div>
+                            <div id="poi-search-results" class="poi-search-results" style="display: none;"></div>
+                            <div id="user-poi-list" class="user-poi-list">
+                                <p class="poi-empty-hint">还没有添加景点，搜索并添加您想去的地方</p>
+                            </div>
+                        </div>
                     </div>
-                    
+
                     <div class="settings-actions">
                         <button class="btn btn-secondary" id="back-to-welcome">
                             <i class="fas fa-arrow-left"></i> 返回
