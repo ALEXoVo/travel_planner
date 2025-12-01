@@ -3,11 +3,12 @@
 
 处理行程生成和AI聊天助手的API端点。
 """
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, session
 from datetime import datetime
 import logging
 
 from services.itinerary_builder import ItineraryBuilder
+from services.user_poi_itinerary_builder import UserPoiItineraryBuilder
 from services.ai_service import AIService
 from services.amap_service import AmapService
 from utils.prompts import build_chat_system_prompt
@@ -140,4 +141,107 @@ def ai_assistant_chat():
         return jsonify({
             "response": "抱歉，AI助手当前不可用。请稍后再试。",
             "error": str(e)
+        }), 500
+
+
+@itinerary_bp.route('/api/itinerary/generate-from-user-pois', methods=['POST'])
+def generate_itinerary_from_user_pois():
+    """
+    基于用户选择的POI生成行程。
+
+    Request Body:
+        {
+            "start_date": "2024-10-01",
+            "end_date": "2024-10-03",
+            "destination_city": "北京",
+            "user_pois_only": false,              # 是否仅规划用户POI（不添加餐厅/酒店）
+            "optimization_strategy": "balanced",   # 'all' | 'shortest' | 'fastest' | 'balanced'
+            "travelers": 2,
+            "budget": "3000-5000"
+        }
+
+    Returns:
+        JSON: {
+            "itinerary": {
+                "days": [...],
+                "destination": "北京",
+                "start_date": "2024-10-01",
+                "end_date": "2024-10-03"
+            },
+            "summary": {
+                "total_days": 3,
+                "total_pois": 5,
+                "user_pois_only": false,
+                "selected_strategy": "balanced"
+            },
+            "route_strategies": {  # 仅当 optimization_strategy='all' 时返回
+                "fastest": {...},
+                "shortest": {...},
+                "balanced": {...}
+            }
+        }
+    """
+    try:
+        # 1. 从Session读取用户选择的POI
+        user_data = session.get('user_selected_pois', {})
+        user_pois = user_data.get('pois', [])
+
+        if not user_pois:
+            return jsonify({
+                "error": "No POIs selected",
+                "message": "请先选择至少一个POI。可使用 /api/poi/autocomplete 搜索并通过 /api/user-pois/add 添加POI。"
+            }), 400
+
+        # 2. 获取请求数据
+        data = request.get_json(force=True)
+        if not data:
+            return jsonify({"error": "Invalid JSON data"}), 400
+
+        # 3. 验证必需字段
+        required_fields = ['start_date', 'end_date', 'destination_city']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({"error": f"Missing required field: {field}"}), 400
+
+        destination_city = data['destination_city']
+
+        # 4. 验证城市一致性
+        session_city = user_data.get('destination_city', '')
+        if session_city and session_city != destination_city:
+            return jsonify({
+                "error": "City mismatch",
+                "message": f"Session中的POI属于 {session_city}，但请求的目的地是 {destination_city}。请清空POI列表后重新选择。"
+            }), 400
+
+        # 5. 构建偏好设置
+        preferences = {
+            'start_date': data['start_date'],
+            'end_date': data['end_date'],
+            'destination_city': destination_city,
+            'user_pois_only': data.get('user_pois_only', False),
+            'optimization_strategy': data.get('optimization_strategy', 'balanced'),
+            'travelers': data.get('travelers', 2),
+            'budget': data.get('budget', '3000-5000')
+        }
+
+        logger.info(f"Generating itinerary from {len(user_pois)} user POIs for {destination_city}")
+
+        # 6. 调用UserPoiItineraryBuilder生成行程
+        builder = UserPoiItineraryBuilder()
+        itinerary_result = builder.build_itinerary_from_user_pois(
+            user_pois=user_pois,
+            preferences=preferences
+        )
+
+        return jsonify(itinerary_result)
+
+    except ValueError as e:
+        logger.error(f"Validation error in user POI itinerary: {str(e)}")
+        return jsonify({"error": str(e)}), 400
+
+    except Exception as e:
+        logger.error(f"Error generating itinerary from user POIs: {str(e)}")
+        return jsonify({
+            "error": "无法生成行程计划，请稍后重试",
+            "details": str(e)
         }), 500

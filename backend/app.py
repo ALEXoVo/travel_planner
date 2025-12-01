@@ -7,6 +7,8 @@ Travel Planner Backend Application
 from flask import Flask, jsonify
 from flask_cors import CORS
 import logging
+import os
+from datetime import timedelta
 
 from config import Config
 from routes.itinerary import itinerary_bp
@@ -33,6 +35,12 @@ def create_app():
     # 加载配置
     app.config.from_object(Config)
 
+    # 🆕 Session配置 - 用于用户POI选择临时存储
+    app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', os.urandom(24).hex())
+    app.config['SESSION_TYPE'] = 'filesystem'
+    app.config['SESSION_PERMANENT'] = True
+    app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)
+
     # 配置CORS
     CORS(app, resources=Config.CORS_RESOURCES)
 
@@ -56,6 +64,7 @@ def create_app():
             "endpoints": {
                 "itinerary": {
                     "generate": "POST /api/itinerary/generate",
+                    "generate_from_user_pois": "POST /api/itinerary/generate-from-user-pois",
                     "chat": "POST /api/assistant/chat"
                 },
                 "map": {
@@ -63,10 +72,12 @@ def create_app():
                     "weather": "GET /api/weather/info"
                 },
                 "poi": {
-                    "add": "POST /api/poi/add",
-                    "list": "GET /api/poi/list",
-                    "optimize": "POST /api/poi/optimize",
-                    "delete": "DELETE /api/poi/delete"
+                    "autocomplete": "GET /api/poi/autocomplete",
+                    "add": "POST /api/user-pois/add",
+                    "list": "GET /api/user-pois/list",
+                    "remove": "DELETE /api/user-pois/remove/<poi_id>",
+                    "clear": "DELETE /api/user-pois/clear",
+                    "optimize": "POST /api/poi/optimize"
                 }
             }
         })
