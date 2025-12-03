@@ -348,7 +348,7 @@ class UserPoiItineraryBuilder:
 
             # 第一个活动无交通信息
             if i == 0:
-                activity['transportation_options'] = []  # 🔧 修正字段名
+                activity['transportation_options'] = []  #  修正字段名
             else:
                 # 计算交通信息
                 prev_poi = optimized_sequence[i - 1]
@@ -369,10 +369,10 @@ class UserPoiItineraryBuilder:
                     prev_location,
                     curr_location,
                     city,
-                    weather_data=weather_data,  # 🆕 传入天气数据
-                    current_time=current_time   # 🆕 传入当前时间
+                    weather_data=weather_data,  #  传入天气数据
+                    current_time=current_time   #  传入当前时间
                 )
-                activity['transportation_options'] = transportation_options  # 🔧 修正字段名
+                activity['transportation_options'] = transportation_options  #  修正字段名
 
             activities.append(activity)
 
@@ -414,7 +414,7 @@ class UserPoiItineraryBuilder:
 
             options = []
 
-            # 1. 驾车方案（永远添加）
+            # 1. 驾车方案
             driving = self.amap_service.get_driving_route(origin_str, dest_str)
             if driving[0] > 0:
                 options.append({

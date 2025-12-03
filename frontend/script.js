@@ -37,6 +37,7 @@ let userPreferences = {
 
 let itinerary = [];
 let chatHistory = [];
+let currentUser = null; // 全局用户状态
 
 // DOM 元素
 let toggleChatBtn;
@@ -174,29 +175,6 @@ function initializeDOMElements() {
     });
 }
 
-function planAllRoutes() {
-    console.log('开始规划所有路线...');
-    showMessage('正在规划', '正在为您规划所有活动间的路线...');
-    
-    // 遍历存储的行程数据
-    // 这里的 itinerary 变量必须在 generateItineraryWithAI 中正确设置
-    if (itinerary && Array.isArray(itinerary)) { 
-        itinerary.forEach((day) => {
-            // initDayMap 函数内部会调用 drawRouteOnMap 来绘制路线
-            // 确保 initDayMap 能够正确地从 day.activities 中获取到地点坐标和交通信息
-            initDayMap(day.day, day.activities); 
-        });
-        
-        messageModal.style.display = 'none';
-        showMessage('规划完成', '所有路线已成功在地图上显示！');
-        
-    } else {
-        messageModal.style.display = 'none';
-        showMessage('错误', '没有找到行程数据，请先生成行程。');
-    }
-}
-
-
 // 绑定事件监听器
 function bindEventListeners() {
     console.log('Binding event listeners...');
@@ -241,14 +219,6 @@ function bindEventListeners() {
         aiGenerateBtn.addEventListener('click', () => {
             console.log('AI Generate button clicked');
             generateItineraryWithAI();
-        });
-    }
-
-    // 路线规划按钮
-    const planAllRoutesBtn = document.getElementById('plan-all-routes-btn');
-    if (planAllRoutesBtn) {
-        planAllRoutesBtn.addEventListener('click', () => {
-            planAllRoutes();
         });
     }
 
@@ -694,7 +664,23 @@ function generateDailySessions(itineraryData) {
                         
                         <div class="activities">
                             <h4><i class="fas fa-tasks"></i> 活动安排</h4>
-                            ${day.activities && Array.isArray(day.activities) ? day.activities.map(activity => `
+                            ${day.activities && Array.isArray(day.activities) ? day.activities
+                                // 过滤掉酒店和交通相关活动
+                                .filter(activity => {
+                                    const title = activity.title || '';
+                                    const desc = activity.description || '';
+                                    const excludeKeywords = [
+                                        '酒店', '入住', '办理入住', '休息', '住宿', 'hotel',
+                                        '机场', '航班', '机票', '接机', '送机', '机场大巴',
+                                        '火车站', '高铁站', '火车', '高铁', '动车',
+                                        '返回住宿', '回酒店', '前往机场', '前往火车站'
+                                    ];
+                                    const text = (title + ' ' + desc).toLowerCase();
+                                    return !excludeKeywords.some(keyword =>
+                                        text.includes(keyword.toLowerCase())
+                                    );
+                                })
+                                .map(activity => `
                                 <div class="activity-item">
                                     <div class="activity-header">
                                         <input type="text" value="${activity.title}" class="activity-title">
@@ -1226,8 +1212,16 @@ async function logout() {
         });
 
         if (response.ok) {
-            showMessage('登出成功', '您已成功登出');
             updateAuthUI(null);
+
+            // 返回欢迎页面
+            const screens = document.querySelectorAll('.screen');
+            screens.forEach(screen => screen.style.display = 'none');
+            if (welcomeScreen) {
+                welcomeScreen.style.display = 'flex';
+            }
+
+            showMessage('登出成功', '您已成功登出');
         }
     } catch (error) {
         console.error('Logout error:', error);
@@ -1256,6 +1250,9 @@ async function checkLoginStatus() {
 
 // 更新认证UI
 function updateAuthUI(user) {
+    // 保存到全局状态
+    currentUser = user;
+
     if (user) {
         window.authButtons.style.display = 'none';
         window.userInfo.style.display = 'flex';
@@ -1270,40 +1267,37 @@ function updateAuthUI(user) {
 
 // 显示历史行程页面
 async function showHistoryPage() {
-    // 检查是否已登录
-    try {
-        const response = await fetch('http://localhost:8888/api/auth/me', {
-            credentials: 'include'
-        });
-
-        if (!response.ok) {
-            showMessage('请先登录', '查看历史行程需要登录，请先登录或注册');
-            showLoginModal();
-            return;
-        }
-
-        // 加载历史行程
-        loadHistoryItineraries();
-    } catch (error) {
-        console.error('Check auth error:', error);
-        showMessage('错误', '网络错误，请稍后重试');
+    // 检查是否已登录（使用全局状态）
+    if (!currentUser) {
+        showMessage('请先登录', '查看历史行程需要登录，请先登录或注册');
+        showLoginModal();
+        return;
     }
+
+    // 加载历史行程
+    loadHistoryItineraries();
 }
 
 // 加载历史行程列表
 async function loadHistoryItineraries(page = 1, city = '') {
+    console.log('loadHistoryItineraries called with page:', page, 'city:', city);
     try {
         const params = new URLSearchParams({ page, per_page: 10 });
-        if (city) params.append('city', city);
+        if (city) params.append('destination_city', city);
 
+        console.log('Fetching history from:', `http://localhost:8888/api/itinerary/history?${params}`);
         const response = await fetch(`http://localhost:8888/api/itinerary/history?${params}`, {
             credentials: 'include'
         });
 
+        console.log('History response status:', response.status);
         if (response.ok) {
             const data = await response.json();
+            console.log('History data received:', data);
             renderHistoryList(data);
         } else {
+            const errorText = await response.text();
+            console.error('History load failed:', response.status, errorText);
             showMessage('错误', '加载历史行程失败');
         }
     } catch (error) {
@@ -1314,6 +1308,11 @@ async function loadHistoryItineraries(page = 1, city = '') {
 
 // 渲染历史行程列表
 function renderHistoryList(data) {
+    console.log('Rendering history list with data:', data);
+
+    // 检查是否有数据
+    const hasItems = data.items && data.items.length > 0;
+
     // 创建历史行程界面HTML
     const historyHTML = `
         <div class="history-screen">
@@ -1328,7 +1327,7 @@ function renderHistoryList(data) {
                 <button class="btn btn-primary" onclick="filterHistory()">筛选</button>
             </div>
             <div class="history-list" id="history-list">
-                ${data.items.map(item => `
+                ${hasItems ? data.items.map(item => `
                     <div class="history-item" data-id="${item.id}">
                         <div class="history-item-header">
                             <h3>${item.title || item.destination_city + '之旅'}</h3>
@@ -1343,13 +1342,21 @@ function renderHistoryList(data) {
                             <button class="btn btn-secondary" onclick="deleteHistory(${item.id})">删除</button>
                         </div>
                     </div>
-                `).join('')}
+                `).join('') : `
+                    <div class="empty-state">
+                        <i class="fas fa-inbox" style="font-size: 48px; color: #ccc; margin-bottom: 16px;"></i>
+                        <p style="color: #666;">暂无历史行程</p>
+                        <p style="color: #999; font-size: 14px;">开始规划您的第一次旅程吧！</p>
+                    </div>
+                `}
             </div>
-            <div class="history-pagination">
-                ${data.page > 1 ? `<button class="btn btn-outline" onclick="loadHistoryItineraries(${data.page - 1})">上一页</button>` : ''}
-                <span>第 ${data.page} / ${data.pages} 页</span>
-                ${data.page < data.pages ? `<button class="btn btn-outline" onclick="loadHistoryItineraries(${data.page + 1})">下一页</button>` : ''}
-            </div>
+            ${hasItems ? `
+                <div class="history-pagination">
+                    ${data.page > 1 ? `<button class="btn btn-outline" onclick="loadHistoryItineraries(${data.page - 1})">上一页</button>` : ''}
+                    <span>第 ${data.page} / ${data.pages} 页</span>
+                    ${data.page < data.pages ? `<button class="btn btn-outline" onclick="loadHistoryItineraries(${data.page + 1})">下一页</button>` : ''}
+                </div>
+            ` : ''}
         </div>
     `;
 
@@ -1547,7 +1554,12 @@ async function addPOI(id, name, location, type) {
 
 // 加载用户已添加的POI列表
 async function loadUserPOIs(city) {
-    if (!city) return;
+    if (!city) {
+        console.warn('loadUserPOIs: city参数为空');
+        return;
+    }
+
+    console.log('loadUserPOIs: 正在加载POI列表，城市=', city);
 
     try {
         const response = await fetch(`http://localhost:8888/api/user-pois/list?city=${encodeURIComponent(city)}`, {
@@ -1556,7 +1568,10 @@ async function loadUserPOIs(city) {
 
         if (response.ok) {
             const data = await response.json();
+            console.log('loadUserPOIs: 成功获取数据', data);
             renderUserPOIs(data.pois, city);
+        } else {
+            console.error('loadUserPOIs: API返回错误', response.status);
         }
     } catch (error) {
         console.error('Load user POIs error:', error);
@@ -1566,6 +1581,8 @@ async function loadUserPOIs(city) {
 // 渲染用户POI列表
 function renderUserPOIs(pois, city) {
     const listDiv = window.userPoiList;
+
+    console.log('renderUserPOIs: 渲染POI列表，数量=', pois ? pois.length : 0);
 
     if (!pois || pois.length === 0) {
         listDiv.innerHTML = '<p class="poi-empty-hint">还没有添加景点，搜索并添加您想去的地方</p>';
@@ -1585,6 +1602,8 @@ function renderUserPOIs(pois, city) {
             </div>
         </div>
     `).join('');
+
+    console.log('renderUserPOIs: POI列表已渲染完成');
 }
 
 // 删除POI

@@ -57,8 +57,7 @@ class AIService:
         """
         return (
             self.api_key and
-            self.api_key != '' and
-            self.api_key != 'sk-d5826bdc14774b718b056a376bf894e0'
+            self.api_key != ''
         )
 
     def generate_itinerary(

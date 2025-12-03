@@ -343,7 +343,7 @@ class ItineraryBuilder:
                     all_days=itinerary_data['itinerary'],
                     destination_city=destination_city,
                     origin_coords=origin_coords,
-                    weather_data=weather_data  # 🆕 传入天气数据
+                    weather_data=weather_data  #  传入天气数据
                 )
 
         return itinerary_data
@@ -452,11 +452,11 @@ class ItineraryBuilder:
                     destination_city=destination_city,
                     origin_coords=origin_coords,
                     is_first_day=(day_index == 0),
-                    weather_data=weather_data,  # 🆕 传入天气数据
-                    current_time=current_time   # 🆕 传入当前时间
+                    weather_data=weather_data,  #  传入天气数据
+                    current_time=current_time   #  传入当前时间
                 )
             else:
-                activity['transportation_options'] = []  # 🔧 修正字段名
+                activity['transportation_options'] = []  #  修正字段名
 
     def _resolve_activity_coordinates(
         self,
