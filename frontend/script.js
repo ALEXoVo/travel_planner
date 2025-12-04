@@ -2067,25 +2067,57 @@ async function renderCurrentMustVisitPOIs() {
     }
 
     try {
-        console.log('[renderCurrentMustVisitPOIs] 发起API请求...');
+        let pois = [];
 
-        // 获取用户POI列表
-        const response = await fetch('http://localhost:8888/api/user-pois/list', {
-            credentials: 'include'
-        });
+        // 优先从localStorage加载（解决Session Cookie问题）
+        const localData = localStorage.getItem('user_selected_pois');
+        console.log('[renderCurrentMustVisitPOIs] localStorage数据:', localData);
 
-        console.log('[renderCurrentMustVisitPOIs] API响应状态:', response.status);
+        if (localData) {
+            try {
+                const poiData = JSON.parse(localData);
+                console.log('[renderCurrentMustVisitPOIs] 从localStorage解析数据:', poiData);
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error('[renderCurrentMustVisitPOIs] API错误:', errorText);
-            throw new Error(`获取POI列表失败: ${response.status}`);
+                // 转换字段名以匹配渲染模板（id→poi_id, name→poi_name）
+                pois = (poiData.pois || []).map(poi => ({
+                    poi_id: poi.id,
+                    poi_name: poi.name,
+                    priority: poi.priority || 'must_visit',
+                    source: poi.source || 'user',
+                    city: poi.city,
+                    location: poi.location,
+                    type: poi.type
+                }));
+
+                console.log('[renderCurrentMustVisitPOIs] 从localStorage获取POI数量:', pois.length);
+            } catch (e) {
+                console.error('[renderCurrentMustVisitPOIs] localStorage解析失败:', e);
+            }
         }
 
-        const data = await response.json();
-        console.log('[renderCurrentMustVisitPOIs] 获取到的POI数据:', data);
+        // 如果localStorage没有数据，尝试从API获取
+        if (pois.length === 0) {
+            console.log('[renderCurrentMustVisitPOIs] localStorage无数据，发起API请求...');
 
-        const pois = data.pois || [];
+            // 获取用户POI列表
+            const response = await fetch('http://localhost:8888/api/user-pois/list', {
+                credentials: 'include'
+            });
+
+            console.log('[renderCurrentMustVisitPOIs] API响应状态:', response.status);
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('[renderCurrentMustVisitPOIs] API错误:', errorText);
+                throw new Error(`获取POI列表失败: ${response.status}`);
+            }
+
+            const data = await response.json();
+            console.log('[renderCurrentMustVisitPOIs] 获取到的POI数据:', data);
+
+            pois = data.pois || [];
+        }
+
         console.log('[renderCurrentMustVisitPOIs] POI数量:', pois.length);
 
         if (pois.length === 0) {

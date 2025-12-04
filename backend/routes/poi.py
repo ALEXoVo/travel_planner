@@ -180,10 +180,6 @@ def add_user_poi():
 
         # 未登录用户：保存到Session（原有逻辑）
         else:
-            # 诊断：打印Session ID
-            from flask import request as flask_request
-            logger.info(f"[ADD POI] Session ID: {session.get('_id', 'NO SESSION ID')}")
-            logger.info(f"[ADD POI] Session SID cookie: {flask_request.cookies.get('travelplanner_session', 'NO COOKIE')}")
             logger.info(f"[ADD POI] Unauthenticated user: using session storage, city={city}, poi_id={poi['id']}, priority={priority}")
             # 初始化Session结构
             if 'user_selected_pois' not in session:
@@ -287,12 +283,6 @@ def list_user_pois():
 
         # 未登录用户：从Session读取（原有逻辑）
         else:
-            # 诊断：打印Session ID
-            from flask import request as flask_request
-            logger.info(f"[LIST POI] Session ID: {session.get('_id', 'NO SESSION ID')}")
-            logger.info(f"[LIST POI] Session SID cookie: {flask_request.cookies.get('travelplanner_session', 'NO COOKIE')}")
-            logger.info(f"[LIST POI] Unauthenticated user: reading from session")
-            logger.info(f"[LIST POI] Session keys: {list(session.keys())}")
             user_data = session.get('user_selected_pois', {})
             pois = user_data.get('pois', [])
             logger.info(f"[LIST POI] Session data: destination_city={user_data.get('destination_city', 'none')}, count={len(pois)}")
