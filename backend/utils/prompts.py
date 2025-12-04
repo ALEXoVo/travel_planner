@@ -102,6 +102,7 @@ def build_itinerary_generation_prompt(
     travelers: int,
     travel_styles: List[str],
     custom_prompt: str,
+    accommodation: str,
     destination_pois: List[Dict],
     food_pois: List[Dict],
     hotel_pois: List[Dict],
@@ -109,7 +110,9 @@ def build_itinerary_generation_prompt(
     shopping_pois: List[Dict],
     parent_child_pois: List[Dict],
     weather_data: Dict[str, Any],
-    days: int
+    days: int,
+    user_pois: List[Dict] = None,
+    replan_mode: str = None
 ) -> str:
     """
     构建行程生成的AI提示词。
@@ -125,6 +128,7 @@ def build_itinerary_generation_prompt(
         travelers: 出行人数
         travel_styles: 旅游风格列表
         custom_prompt: 自定义需求
+        accommodation: 住宿信息
         destination_pois: 景点POI列表
         food_pois: 美食POI列表
         hotel_pois: 酒店POI列表
@@ -133,6 +137,8 @@ def build_itinerary_generation_prompt(
         parent_child_pois: 亲子场所POI列表
         weather_data: 天气数据
         days: 行程天数
+        user_pois: 用户选择的POI列表（可选）
+        replan_mode: 重新规划模式（'incremental'/'complete'/None，可选）
 
     Returns:
         str: 完整的提示词
@@ -191,6 +197,59 @@ def build_itinerary_generation_prompt(
 请务必在规划行程时充分考虑上述自定义需求，并在行程安排中体现。
 """
 
+    # 处理住宿信息
+    accommodation_guidance = ""
+    if accommodation and accommodation.strip():
+        accommodation_guidance = f"""
+**住宿信息**：用户提供的住宿位置为：{accommodation}
+在规划行程时，请考虑以下几点：
+1. 优先安排住宿地附近的景点，减少往返时间
+2. 合理规划每日路线，使得返回住宿地的交通便利
+3. 如果某些景点距离住宿地较远，建议在景点附近安排用餐，避免中途返回
+4. 晚间活动建议在住宿地附近进行，方便休息
+"""
+
+    # 🆕 处理用户自选POI
+    user_pois_section = ""
+    if user_pois and len(user_pois) > 0:
+        must_visit_pois = [poi for poi in user_pois if poi.get('priority') == 'must_visit']
+        optional_pois = [poi for poi in user_pois if poi.get('priority') == 'optional']
+
+        user_pois_section = "\n**用户自选景点**：\n"
+
+        if must_visit_pois:
+            user_pois_section += "以下景点是用户【必去】的景点，请务必安排在行程中：\n"
+            for poi in must_visit_pois:
+                location = poi.get('location', {})
+                lng = location.get('lng', '未知')
+                lat = location.get('lat', '未知')
+                user_pois_section += f"- {poi.get('poi_name', '未知景点')}: 坐标({lng},{lat}), 来源: {poi.get('source', 'user')}\n"
+
+        if optional_pois:
+            user_pois_section += "\n以下景点是用户【可选】的景点，如果行程时间允许可以安排：\n"
+            for poi in optional_pois:
+                location = poi.get('location', {})
+                lng = location.get('lng', '未知')
+                lat = location.get('lat', '未知')
+                user_pois_section += f"- {poi.get('poi_name', '未知景点')}: 坐标({lng},{lat}), 来源: {poi.get('source', 'user')}\n"
+
+        user_pois_section += "\n"
+
+    # 🆕 处理重新规划模式说明
+    replan_guidance = ""
+    if replan_mode == 'incremental':
+        replan_guidance = """
+**重新规划模式**：增量规划
+用户正在进行增量规划，请在保留原有行程POI的基础上，添加用户新选择的POI，并重新优化路线。
+请确保所有用户【必去】的POI都被安排在行程中。
+"""
+    elif replan_mode == 'complete':
+        replan_guidance = """
+**重新规划模式**：完全重新规划
+用户选择了完全重新规划模式，请忽略之前的行程安排，只保留用户标记为【必去】的POI，生成全新的行程计划。
+您可以从推荐的POI列表中选择新的景点，但必须确保所有用户【必去】的POI都被安排在行程中。
+"""
+
     prompt = f"""
 {persona_prompt}
 请为用户规划一个从{origin_city if origin_city else '出发地'}到{destination_city}的旅游行程。
@@ -224,6 +283,10 @@ def build_itinerary_generation_prompt(
 
 {weather_guidance}
 
+{user_pois_section}
+
+{replan_guidance}
+
 **多出入口景点优化提示**：
 对于大型景点（如故宫、颐和园、天坛等），系统会自动为您选择最优的出入口，以减少回头路和步行距离。
 在描述活动时，如果您知道推荐的入口/出口（如"故宫午门"、"颐和园东宫门"），可以标注出来，但这不是强制要求。
@@ -236,6 +299,8 @@ def build_itinerary_generation_prompt(
 5. 根据天气情况提供出行建议
 
 **注意**：本次行程规划专注于旅游活动本身，无需推荐酒店和机票信息。用户会自行安排住宿和交通。
+
+{accommodation_guidance}
 
 对于每个活动地点，请提供准确的地址信息，以便后续获取精确的地理坐标。
 每天至少安排3-5个景点，合理安排时间，确保行程充实但不紧张。

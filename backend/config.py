@@ -139,9 +139,9 @@ class Config:
     AI_CONFIG = {
         'model': 'deepseek-chat',
         'temperature': 0.7,
-        'tokens_per_day': 800,  # 每天行程预计消耗的token数
-        'base_tokens': 500,     # 基础token消耗
-        'max_tokens': 4000      # 最大token限制
+        'tokens_per_day': 1000,  # 每天行程预计消耗的token数
+        'base_tokens': 1000,     # 基础token消耗
+        'max_tokens': 5000      # 最大token限制
     }
 
     # 路径优化配置（OR-Tools使用）
@@ -163,8 +163,7 @@ class Config:
         amap_valid = cls.AMAP_API_KEY and cls.AMAP_API_KEY != ''
         deepseek_valid = (
             cls.DEEPSEEK_API_KEY and
-            cls.DEEPSEEK_API_KEY != '' and
-            cls.DEEPSEEK_API_KEY != 'sk-d5826bdc14774b718b056a376bf894e0'
+            cls.DEEPSEEK_API_KEY != ''
         )
 
         if not amap_valid:

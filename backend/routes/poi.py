@@ -109,6 +109,11 @@ def add_user_poi():
         poi = data.get('poi')
         city = data.get('city')
 
+        # 新增：接收source、priority和itinerary_id参数
+        source = data.get('source', 'user')  # 默认'user'（用户添加）
+        priority = data.get('priority', 'must_visit')  # 默认'must_visit'（必去）
+        itinerary_id = data.get('itinerary_id', None)  # 可选
+
         if not poi or not city:
             return jsonify({"error": "poi and city are required"}), 400
 
@@ -135,14 +140,17 @@ def add_user_poi():
                 if existing:
                     return jsonify({"error": "POI already in the list"}), 409
 
-                # 创建数据库记录
+                # 创建数据库记录（包含新字段）
                 favorite = UserPOIFavorite(
                     user_id=current_user.id,
                     destination_city=city,
                     poi_name=poi.get('name'),
                     poi_id=poi.get('id'),
                     location=json.dumps({'lng': poi.get('lng'), 'lat': poi.get('lat')}),
-                    poi_type=poi.get('type')
+                    poi_type=poi.get('type'),
+                    source=source,  # 新增
+                    priority=priority,  # 新增
+                    itinerary_id=itinerary_id  # 新增
                 )
                 db.session.add(favorite)
                 db.session.commit()
@@ -187,8 +195,10 @@ def add_user_poi():
             if poi['id'] in existing_ids:
                 return jsonify({"error": "POI already in the list"}), 409
 
-            # 添加时间戳
+            # 添加时间戳和新字段
             poi['added_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            poi['source'] = source  # 新增
+            poi['priority'] = priority  # 新增
 
             # 添加到Session
             user_data['pois'].append(poi)
@@ -219,13 +229,17 @@ def list_user_pois():
 
         # 🆕 已登录用户：从数据库读取
         if current_user.is_authenticated:
-            if not city:
-                return jsonify({"error": "city parameter required for authenticated users"}), 400
-
-            favorites = UserPOIFavorite.query.filter_by(
-                user_id=current_user.id,
-                destination_city=city
-            ).order_by(UserPOIFavorite.created_at.desc()).all()
+            # 如果提供了city参数，按城市过滤；否则返回所有POI
+            if city:
+                favorites = UserPOIFavorite.query.filter_by(
+                    user_id=current_user.id,
+                    destination_city=city
+                ).order_by(UserPOIFavorite.created_at.desc()).all()
+            else:
+                # 返回该用户的所有POI，不限城市
+                favorites = UserPOIFavorite.query.filter_by(
+                    user_id=current_user.id
+                ).order_by(UserPOIFavorite.created_at.desc()).all()
 
             # 转换为前端期望的格式
             pois = []
@@ -234,6 +248,7 @@ def list_user_pois():
                 pois.append({
                     'id': fav.poi_id,
                     'name': fav.poi_name,
+                    'city': fav.destination_city,
                     'lng': location_data.get('lng'),
                     'lat': location_data.get('lat'),
                     'type': fav.poi_type,
@@ -241,7 +256,7 @@ def list_user_pois():
                 })
 
             return jsonify({
-                "destination_city": city,
+                "destination_city": city if city else "all",
                 "pois": pois,
                 "count": len(pois)
             })
@@ -266,21 +281,13 @@ def list_user_pois():
 def remove_user_poi(poi_id):
     """
     移除指定POI（兼容模式：DB/Session）
-
-    Query参数:
-        city: 城市名称（已登录用户必需）
     """
     try:
-        city = request.args.get('city', '').strip()
-
         # 🆕 已登录用户：从数据库删除
         if current_user.is_authenticated:
-            if not city:
-                return jsonify({"error": "city parameter required"}), 400
-
+            # 直接用poi_id查找，不需要city参数
             favorite = UserPOIFavorite.query.filter_by(
                 user_id=current_user.id,
-                destination_city=city,
                 poi_id=poi_id
             ).first()
 
@@ -290,10 +297,9 @@ def remove_user_poi(poi_id):
             db.session.delete(favorite)
             db.session.commit()
 
-            # 查询剩余数量
+            # 查询剩余总数量
             remaining_count = UserPOIFavorite.query.filter_by(
-                user_id=current_user.id,
-                destination_city=city
+                user_id=current_user.id
             ).count()
 
             logger.info(f"POI deleted from DB: user={current_user.username}, poi_id={poi_id}")
@@ -437,5 +443,91 @@ def optimize_poi_route():
         return jsonify({
             "error": f"路径优化失败: {str(e)}"
         }), 500
+
+
+# ==================== 5. 更新POI优先级 ====================
+@poi_bp.route('/api/user-pois/update-priority', methods=['POST'])
+def update_poi_priority():
+    """
+    更新POI优先级（必去 ↔ 可选）
+
+    Request Body:
+        {
+            "poi_id": "POI ID",
+            "priority": "must_visit" | "optional"
+        }
+
+    Returns:
+        {
+            "message": "Priority updated",
+            "poi_id": "...",
+            "priority": "..."
+        }
+    """
+    try:
+        data = request.get_json()
+        poi_id = data.get('poi_id', '').strip()
+        new_priority = data.get('priority', '').strip()
+
+        # 验证参数
+        if not poi_id or new_priority not in ['must_visit', 'optional']:
+            return jsonify({"error": "Invalid parameters"}), 400
+
+        # 已登录用户：更新数据库
+        if current_user.is_authenticated:
+            favorite = UserPOIFavorite.query.filter_by(
+                user_id=current_user.id,
+                poi_id=poi_id
+            ).first()
+
+            if not favorite:
+                return jsonify({"error": "POI not found"}), 404
+
+            # 更新优先级
+            favorite.priority = new_priority
+            db.session.commit()
+
+            logger.info(f"POI priority updated: user={current_user.username}, poi_id={poi_id}, priority={new_priority}")
+
+            return jsonify({
+                "message": "Priority updated",
+                "poi_id": poi_id,
+                "priority": new_priority
+            })
+
+        # 未登录用户：更新Session
+        else:
+            if 'user_selected_pois' not in session:
+                return jsonify({"error": "No POIs in session"}), 404
+
+            user_data = session['user_selected_pois']
+            pois = user_data.get('pois', [])
+
+            # 查找并更新POI
+            updated = False
+            for poi in pois:
+                if poi.get('id') == poi_id:
+                    poi['priority'] = new_priority
+                    updated = True
+                    break
+
+            if not updated:
+                return jsonify({"error": "POI not found"}), 404
+
+            # 保存更新
+            session['user_selected_pois'] = user_data
+            session.modified = True
+
+            logger.info(f"POI priority updated in session: poi_id={poi_id}, priority={new_priority}")
+
+            return jsonify({
+                "message": "Priority updated",
+                "poi_id": poi_id,
+                "priority": new_priority
+            })
+
+    except Exception as e:
+        logger.error(f"Update POI priority error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 

@@ -37,9 +37,15 @@ class ItineraryBuilder:
         self.amap_service = amap_service or AmapService()
         self.ai_service = ai_service or AIService()
 
-    def build_itinerary(self, user_preferences: Dict[str, Any]) -> Dict[str, Any]:
+    def build_itinerary(
+        self,
+        user_preferences: Dict[str, Any],
+        replan_mode: str = None,
+        previous_itinerary: Dict[str, Any] = None,
+        user_pois: list = None
+    ) -> Dict[str, Any]:
         """
-        构建完整的旅游行程。
+        构建完整的旅游行程（支持重新规划）。
 
         Args:
             user_preferences: 用户偏好设置，包含：
@@ -52,6 +58,12 @@ class ItineraryBuilder:
                 - customBudget: 自定义预算（可选）
                 - travelers: 出行人数
                 - travelStyles: 旅游风格列表
+            replan_mode: 重新规划模式
+                - None: 首次规划
+                - 'incremental': 增量规划（保留所有原有景点）
+                - 'complete': 完全重新规划（只保留必去景点）
+            previous_itinerary: 上次生成的行程数据（用于增量规划）
+            user_pois: 用户添加的POI列表
 
         Returns:
             Dict[str, Any]: 完整的行程数据
@@ -74,6 +86,13 @@ class ItineraryBuilder:
         travelers = user_preferences.get('travelers', 1)
         travel_styles = user_preferences.get('travelStyles', [])
         custom_prompt = user_preferences.get('customPrompt', '')  # 自定义需求
+        accommodation = user_preferences.get('accommodation', '')  # 住宿信息
+
+        # 3. 处理用户POI（如果提供）
+        if user_pois is None:
+            user_pois = []
+
+        logger.info(f"Building itinerary with {len(user_pois)} user POIs, replan_mode={replan_mode}")
 
         # 3. 计算天数
         days = self._calculate_days(start_date, end_date)
@@ -85,7 +104,7 @@ class ItineraryBuilder:
         # 5. 获取天气数据
         weather_data = self._fetch_weather_data(destination_city)
 
-        # 6. 生成AI行程
+        # 6. 生成AI行程（支持重新规划）
         itinerary_data = self._generate_ai_itinerary(
             destination_city=destination_city,
             origin_city=origin_city,
@@ -97,9 +116,12 @@ class ItineraryBuilder:
             travelers=travelers,
             travel_styles=travel_styles,
             custom_prompt=custom_prompt,
+            accommodation=accommodation,
             poi_data=poi_data,
             weather_data=weather_data,
-            days=days
+            days=days,
+            user_pois=user_pois,
+            replan_mode=replan_mode
         )
 
         # 7. 增强行程（坐标、交通）
@@ -213,12 +235,19 @@ class ItineraryBuilder:
         travelers: int,
         travel_styles: List[str],
         custom_prompt: str,
+        accommodation: str,
         poi_data: Dict[str, List],
         weather_data: Dict[str, Any],
-        days: int
+        days: int,
+        user_pois: list = None,
+        replan_mode: str = None
     ) -> Dict[str, Any]:
         """
         调用AI生成行程。
+
+        Args:
+            user_pois: 用户选择的POI列表（可选）
+            replan_mode: 重新规划模式（'incremental'/'complete'/None，可选）
 
         Returns:
             Dict[str, Any]: AI生成的行程数据
@@ -235,6 +264,7 @@ class ItineraryBuilder:
             travelers=travelers,
             travel_styles=travel_styles,
             custom_prompt=custom_prompt,
+            accommodation=accommodation,
             destination_pois=poi_data['destination'],
             food_pois=poi_data['food'],
             hotel_pois=poi_data['hotel'],
@@ -242,7 +272,9 @@ class ItineraryBuilder:
             shopping_pois=poi_data['shopping'],
             parent_child_pois=poi_data['parent_child'],
             weather_data=weather_data,
-            days=days
+            days=days,
+            user_pois=user_pois,
+            replan_mode=replan_mode
         )
 
         # 调用AI

@@ -9,4 +9,5 @@ db = SQLAlchemy()
 from .user import User
 from .itinerary import Itinerary, ItineraryDay
 from .poi import UserPOIFavorite
+from .activity import UserActivity
 from .chat import ChatSession, ChatMessage

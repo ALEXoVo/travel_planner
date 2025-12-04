@@ -126,6 +126,7 @@ function initializeDOMElements() {
     backToWelcomeBtn = document.getElementById('back-to-welcome');
     backToSettingsBtn = document.getElementById('back-to-settings');
     aiGenerateBtn = document.getElementById('ai-generate-itinerary');
+    window.replanBtn = document.getElementById('replan-itinerary-btn');
 
     // 表单元素
     originCityInput = document.getElementById('origin-city');
@@ -219,6 +220,13 @@ function bindEventListeners() {
         aiGenerateBtn.addEventListener('click', () => {
             console.log('AI Generate button clicked');
             generateItineraryWithAI();
+        });
+    }
+
+    if (window.replanBtn) {
+        window.replanBtn.addEventListener('click', () => {
+            console.log('Replan button clicked');
+            replanItinerary();
         });
     }
 
@@ -374,14 +382,45 @@ function bindEventListeners() {
         });
     }
 
-    // 目的地城市变化时，加载该城市的POI列表
+    // 目的地城市变化时，加载所有POI列表（支持跨城市旅行）
     if (destinationCityInput) {
         destinationCityInput.addEventListener('change', () => {
-            const city = destinationCityInput.value.trim();
-            if (city) {
-                loadUserPOIs(city);
+            // 不传城市参数，加载所有城市的POI
+            loadUserPOIs();
+        });
+    }
+
+    // 🆕 行程页面POI搜索事件监听器
+    const itinerarySearchPoiBtn = document.getElementById('itinerary-search-poi-btn');
+    if (itinerarySearchPoiBtn) {
+        itinerarySearchPoiBtn.addEventListener('click', () => searchPOIInItinerary());
+    }
+
+    const itineraryPoiSearchInput = document.getElementById('itinerary-poi-search-input');
+    if (itineraryPoiSearchInput) {
+        itineraryPoiSearchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                searchPOIInItinerary();
             }
         });
+    }
+
+    // 🆕 重新规划模式按钮
+    const replanModeBtn = document.getElementById('replan-mode-btn');
+    if (replanModeBtn) {
+        replanModeBtn.addEventListener('click', () => showReplanModal());
+    }
+
+    // 🆕 添加活动按钮
+    const addActivityBtn = document.getElementById('add-activity-btn');
+    if (addActivityBtn) {
+        addActivityBtn.addEventListener('click', () => showAddActivityModal());
+    }
+
+    // 🆕 添加活动表单提交
+    const addActivityForm = document.getElementById('add-activity-form');
+    if (addActivityForm) {
+        addActivityForm.addEventListener('submit', (e) => submitActivity(e));
     }
 
     // 检查登录状态
@@ -417,6 +456,7 @@ async function generateItineraryWithAI() {
     userPreferences.customBudget = customBudgetInput.value;
     userPreferences.travelers = travelersSelect.value;
     userPreferences.customPrompt = document.getElementById('custom-prompt').value.trim();
+    userPreferences.accommodation = document.getElementById('accommodation-info') ? document.getElementById('accommodation-info').value.trim() : '';
 
     console.log('User preferences:', userPreferences);
     
@@ -468,7 +508,8 @@ async function generateItineraryWithAI() {
                 customBudget: userPreferences.customBudget,
                 travelers: userPreferences.travelers,
                 travelStyles: userPreferences.travelStyles,
-                customPrompt: userPreferences.customPrompt
+                customPrompt: userPreferences.customPrompt,
+                accommodation: userPreferences.accommodation
             }),
             signal: controller.signal
         });
@@ -533,7 +574,18 @@ async function generateItineraryWithAI() {
         
         // 生成每日行程session
         generateDailySessions(data.itinerary);
-        
+
+        // 🆕 渲染当前必去景点列表（确保在DOM渲染完成后调用）
+        setTimeout(() => {
+            console.log('[AI生成完成] 准备渲染POI列表');
+            renderCurrentMustVisitPOIs();
+        }, 1000);
+
+        // 显示重新规划按钮
+        if (window.replanBtn) {
+            window.replanBtn.style.display = 'inline-block';
+        }
+
         // 重新初始化折叠功能
         setTimeout(initializeCollapsibleSections, 100);
         
@@ -607,14 +659,13 @@ function generateDailySessions(itineraryData) {
     console.log('Generating daily sessions with data:', itineraryData);
     
     // 查找已存在的每日行程section（除了前几个固定section）
-    const itinerarySections = document.querySelectorAll('.itinerary-section');
-    // 从索引2开始删除（跳过交通、酒店section）
-    for (let i = itinerarySections.length - 1; i >= 2; i--) {
-        itinerarySections[i].remove();
+    // 获取行程容器并清空
+    const itineraryContainer = document.getElementById('itinerary-container');
+    if (!itineraryContainer) {
+        console.error('Itinerary container not found');
+        return;
     }
-    
-    // 生成新的每日行程section
-    const itineraryContainer = document.getElementById('itinerary-screen');
+    itineraryContainer.innerHTML = '';
     
     // 根据后端返回的数据生成行程
     if (itineraryData && Array.isArray(itineraryData)) {
@@ -779,20 +830,19 @@ function initDayMap(dayNumber, activities) {
         
         // 确保高德地图API已加载
         if (typeof AMap !== 'undefined') {
-            // 创建地图实例
+            // 创建地图实例（不设置初始zoom和center，让setFitView自动调整）
             const map = new AMap.Map(mapContainerId, {
-                zoom: 12,
-                center: [116.397428, 39.90923] // 默认北京中心坐标
+                resizeEnable: true
             });
-            
+
             console.log('地图实例创建成功');
-            
+
             // 添加标记点
             let hasLocations = false;
             const markers = [];
             const positions = [];
             const locationsWithDetails = [];
-            
+
             if (activities && Array.isArray(activities)) {
                 activities.forEach((activity, index) => {
                     if (activity.location && activity.location.lng && activity.location.lat) {
@@ -804,10 +854,15 @@ function initDayMap(dayNumber, activities) {
                             title: activity.title,
                             address: activity.location.address || ''
                         });
-                        
+
+                        // 创建带序号的标记
                         const marker = new AMap.Marker({
                             position: position,
                             title: activity.title,
+                            label: {
+                                content: `${index + 1}`,
+                                direction: 'top'
+                            },
                             map: map
                         });
                         markers.push(marker);
@@ -815,17 +870,19 @@ function initDayMap(dayNumber, activities) {
                     }
                 });
             }
-            
+
             console.log('所有位置点:', positions);
-            
+
             // 如果有地点，调整地图视野以包含所有标记并绘制路线
             if (hasLocations && markers.length >= 1) {
                 console.log(`第${dayNumber}天有${markers.length}个位置点，开始绘制路线`);
-                map.setFitView(markers);
+                // 设置合适的padding，确保所有点都清晰可见
+                map.setFitView(markers, true, [50, 50, 50, 50]);
                 // 绘制路线
                 drawRouteOnMap(map, activities);
             } else if (!hasLocations) {
-                // 如果没有任何地点坐标信息，仍然保留地图显示
+                // 如果没有任何地点坐标信息，设置默认中心和缩放
+                map.setZoomAndCenter(12, [116.397428, 39.90923]);
                 console.log(`第${dayNumber}天没有位置数据，显示默认地图`);
             }
         } else {
@@ -1246,6 +1303,9 @@ async function checkLoginStatus() {
         console.error('Check login status error:', error);
         updateAuthUI(null);
     }
+
+    // 无论登录与否，都加载POI列表（支持session-based存储）
+    loadUserPOIs();
 }
 
 // 更新认证UI
@@ -1422,6 +1482,9 @@ async function loadHistoryItinerary(id) {
             // 生成行程显示
             generateDailySessions(itinerary, JSON.parse(data.summary || '{}'));
 
+            // 🆕 渲染当前必去景点列表
+            setTimeout(() => renderCurrentMustVisitPOIs(), 500);
+
             settingsScreen.style.display = 'none';
             itineraryScreen.style.display = 'block';
         } else {
@@ -1463,24 +1526,28 @@ async function deleteHistory(id) {
 // 搜索POI
 async function searchPOI() {
     const query = window.poiSearchInput.value.trim();
-    const city = destinationCityInput.value.trim();
+    const poiCityInput = document.getElementById('poi-city-input');
+    // 优先使用POI城市输入框，如果为空则使用目的地城市
+    const city = poiCityInput ? poiCityInput.value.trim() : '';
+    const finalCity = city || destinationCityInput.value.trim();
 
     if (!query) {
         showMessage('提示', '请输入景点名称');
         return;
     }
 
-    if (!city) {
-        showMessage('提示', '请先选择目的地城市');
+    if (!finalCity) {
+        showMessage('提示', '请输入城市或先选择目的地城市');
         return;
     }
 
     try {
-        const response = await fetch(`http://localhost:8888/api/poi/autocomplete?query=${encodeURIComponent(query)}&city=${encodeURIComponent(city)}&limit=5`);
+        const response = await fetch(`http://localhost:8888/api/poi/autocomplete?query=${encodeURIComponent(query)}&city=${encodeURIComponent(finalCity)}&limit=5`);
 
         if (response.ok) {
             const data = await response.json();
-            renderSearchResults(data.suggestions);
+            // 将城市信息传递给渲染函数
+            renderSearchResults(data.suggestions, finalCity);
         } else {
             showMessage('错误', '搜索失败');
         }
@@ -1491,7 +1558,7 @@ async function searchPOI() {
 }
 
 // 渲染搜索结果
-function renderSearchResults(suggestions) {
+function renderSearchResults(suggestions, city) {
     const resultsDiv = window.poiSearchResults;
 
     if (suggestions.length === 0) {
@@ -1501,9 +1568,9 @@ function renderSearchResults(suggestions) {
     }
 
     resultsDiv.innerHTML = suggestions.map(poi => `
-        <div class="poi-search-item" onclick="addPOI('${poi.id}', '${poi.name.replace(/'/g, "\\'")}', '${poi.location}', '${poi.type}')">
+        <div class="poi-search-item" onclick="addPOI('${poi.id}', '${poi.name.replace(/'/g, "\\'")}', '${poi.location}', '${poi.type}', '${city}')">
             <div class="poi-search-item-name">${poi.name}</div>
-            <div class="poi-search-item-address">${poi.address}</div>
+            <div class="poi-search-item-address">${poi.address} (${city})</div>
         </div>
     `).join('');
 
@@ -1511,11 +1578,11 @@ function renderSearchResults(suggestions) {
 }
 
 // 添加POI到用户列表
-async function addPOI(id, name, location, type) {
-    const city = destinationCityInput.value.trim();
+async function addPOI(id, name, location, type, city) {
+    console.log('addPOI called with city:', city);
 
     if (!city) {
-        showMessage('提示', '请先选择目的地城市');
+        showMessage('提示', '城市信息缺失');
         return;
     }
 
@@ -1538,11 +1605,14 @@ async function addPOI(id, name, location, type) {
             // 隐藏搜索结果
             window.poiSearchResults.style.display = 'none';
             window.poiSearchInput.value = '';
+            // 清空POI城市输入框
+            const poiCityInput = document.getElementById('poi-city-input');
+            if (poiCityInput) poiCityInput.value = '';
 
-            // 重新加载POI列表
-            loadUserPOIs(city);
+            // 重新加载POI列表 - 不指定城市，加载所有POI
+            loadUserPOIs();
 
-            showMessage('成功', `已添加 ${name}`);
+            showMessage('成功', `已添加 ${name} (${city})`);
         } else {
             showMessage('错误', data.error || '添加失败');
         }
@@ -1553,23 +1623,23 @@ async function addPOI(id, name, location, type) {
 }
 
 // 加载用户已添加的POI列表
-async function loadUserPOIs(city) {
-    if (!city) {
-        console.warn('loadUserPOIs: city参数为空');
-        return;
-    }
-
-    console.log('loadUserPOIs: 正在加载POI列表，城市=', city);
+async function loadUserPOIs(city = '') {
+    console.log('loadUserPOIs: 正在加载POI列表，城市=', city || '所有城市');
 
     try {
-        const response = await fetch(`http://localhost:8888/api/user-pois/list?city=${encodeURIComponent(city)}`, {
+        // 如果提供了city参数，添加到URL；否则加载所有POI
+        const url = city
+            ? `http://localhost:8888/api/user-pois/list?city=${encodeURIComponent(city)}`
+            : 'http://localhost:8888/api/user-pois/list';
+
+        const response = await fetch(url, {
             credentials: 'include'
         });
 
         if (response.ok) {
             const data = await response.json();
             console.log('loadUserPOIs: 成功获取数据', data);
-            renderUserPOIs(data.pois, city);
+            renderUserPOIs(data.pois);
         } else {
             console.error('loadUserPOIs: API返回错误', response.status);
         }
@@ -1579,7 +1649,7 @@ async function loadUserPOIs(city) {
 }
 
 // 渲染用户POI列表
-function renderUserPOIs(pois, city) {
+function renderUserPOIs(pois) {
     const listDiv = window.userPoiList;
 
     console.log('renderUserPOIs: 渲染POI列表，数量=', pois ? pois.length : 0);
@@ -1593,10 +1663,10 @@ function renderUserPOIs(pois, city) {
         <div class="poi-item">
             <div class="poi-item-info">
                 <div class="poi-item-name">${poi.name}</div>
-                <div class="poi-item-type">${poi.type || '景点'}</div>
+                <div class="poi-item-type">${poi.city ? `${poi.city} · ${poi.type || '景点'}` : (poi.type || '景点')}</div>
             </div>
             <div class="poi-item-actions">
-                <button class="btn btn-secondary" onclick="removePOI('${poi.id}', '${city}')">
+                <button class="btn btn-secondary" onclick="removePOI('${poi.id}')">
                     <i class="fas fa-trash"></i>
                 </button>
             </div>
@@ -1607,15 +1677,15 @@ function renderUserPOIs(pois, city) {
 }
 
 // 删除POI
-async function removePOI(poiId, city) {
+async function removePOI(poiId) {
     try {
-        const response = await fetch(`http://localhost:8888/api/user-pois/remove/${poiId}?city=${encodeURIComponent(city)}`, {
+        const response = await fetch(`http://localhost:8888/api/user-pois/remove/${poiId}`, {
             method: 'DELETE',
             credentials: 'include'
         });
 
         if (response.ok) {
-            loadUserPOIs(city);
+            loadUserPOIs();  // 重新加载所有POI
             showMessage('成功', 'POI已删除');
         } else {
             showMessage('错误', '删除失败');
@@ -1623,5 +1693,587 @@ async function removePOI(poiId, city) {
     } catch (error) {
         console.error('Remove POI error:', error);
         showMessage('错误', '网络错误，请稍后重试');
+    }
+}
+
+// ==================== 重新规划行程 ====================
+async function replanItinerary() {
+    console.log('Replanning itinerary...');
+
+    try {
+        // 获取用户已添加的所有POI
+        const response = await fetch('http://localhost:8888/api/user-pois/list', {
+            credentials: 'include'
+        });
+
+        if (!response.ok) {
+            showMessage('错误', '无法获取您添加的景点列表');
+            return;
+        }
+
+        const data = await response.json();
+        console.log('User POIs:', data.pois);
+
+        if (!data.pois || data.pois.length === 0) {
+            showMessage('提示', '您还没有添加任何景点，无法重新规划。请先在设置页面添加景点。');
+            return;
+        }
+
+        // 确认是否重新规划
+        if (!confirm(`即将基于您添加的 ${data.pois.length} 个景点重新规划行程，是否继续？`)) {
+            return;
+        }
+
+        // 显示正在生成提示
+        showMessage('正在重新规划', '正在为您重新生成个性化行程，请稍候...');
+
+        // 构建请求体，使用当前行程的参数
+        const requestBody = {
+            originCity: userPreferences.originCity,
+            destinationCity: userPreferences.destinationCity,
+            startDate: userPreferences.startDate,
+            endDate: userPreferences.endDate,
+            budgetType: userPreferences.budgetType,
+            budget: userPreferences.budget,
+            customBudget: userPreferences.customBudget,
+            travelers: userPreferences.travelers,
+            travelStyles: userPreferences.travelStyles,
+            customPrompt: userPreferences.customPrompt,
+            accommodation: userPreferences.accommodation,
+            userPOIs: data.pois  // 传递用户添加的POI列表
+        };
+
+        console.log('Replan request body:', requestBody);
+
+        // 调用后端API重新生成行程
+        const replanResponse = await fetch('http://localhost:8888/api/itinerary/generate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestBody),
+            credentials: 'include'
+        });
+
+        console.log('Replan response:', replanResponse);
+
+        if (!replanResponse.ok) {
+            throw new Error(`重新规划失败 (状态码: ${replanResponse.status})`);
+        }
+
+        const replanData = await replanResponse.json();
+        console.log('Replanned itinerary data:', replanData);
+
+        // 更新全局行程变量
+        itinerary = replanData.itinerary;
+
+        // 关闭消息模态框
+        messageModal.style.display = 'none';
+
+        // 重新生成每日行程显示
+        generateDailySessions(replanData.itinerary);
+
+        // 重新初始化折叠功能
+        setTimeout(initializeCollapsibleSections, 100);
+
+        showMessage('重新规划完成', '已为您生成新的行程安排！');
+
+    } catch (error) {
+        console.error('Replan error:', error);
+        messageModal.style.display = 'none';
+        showMessage('错误', `重新规划失败：${error.message}`);
+    }
+}
+
+// ==================== 🆕 行程页面POI搜索功能 ==================== //
+
+/**
+ * 在行程页面搜索POI
+ */
+async function searchPOIInItinerary() {
+    const searchInput = document.getElementById('itinerary-poi-search-input');
+    const searchResults = document.getElementById('itinerary-poi-search-results');
+    const keyword = searchInput.value.trim();
+
+    console.log('[searchPOIInItinerary] 搜索关键词:', keyword);
+
+    if (!keyword) {
+        showMessage('提示', '请输入景点名称');
+        return;
+    }
+
+    // 获取目的地城市（从行程摘要中）
+    const destinationCity = document.getElementById('edit-destination-city').value || userPreferences.destinationCity;
+
+    console.log('[searchPOIInItinerary] 目的地城市:', destinationCity);
+
+    if (!destinationCity) {
+        showMessage('提示', '无法获取目的地城市');
+        return;
+    }
+
+    try {
+        const url = `http://localhost:8888/api/poi/autocomplete?city=${encodeURIComponent(destinationCity)}&keywords=${encodeURIComponent(keyword)}`;
+        console.log('[searchPOIInItinerary] 请求URL:', url);
+
+        const response = await fetch(url, {
+            credentials: 'include'
+        });
+
+        console.log('[searchPOIInItinerary] 响应状态:', response.status);
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('[searchPOIInItinerary] API错误:', errorText);
+            throw new Error(`搜索失败: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log('[searchPOIInItinerary] 搜索结果:', data);
+
+        renderItineraryPOISearchResults(data.suggestions || []);
+
+    } catch (error) {
+        console.error('[searchPOIInItinerary] 搜索错误:', error);
+        showMessage('错误', `搜索景点失败：${error.message}`);
+    }
+}
+
+/**
+ * 渲染行程页面POI搜索结果
+ */
+function renderItineraryPOISearchResults(suggestions) {
+    const resultsContainer = document.getElementById('itinerary-poi-search-results');
+
+    if (!suggestions || suggestions.length === 0) {
+        resultsContainer.innerHTML = '<p class="poi-empty-hint">未找到相关景点</p>';
+        resultsContainer.style.display = 'block';
+        return;
+    }
+
+    resultsContainer.innerHTML = suggestions.map(poi => `
+        <div class="poi-result-item" onclick="addPOIFromItinerary('${poi.id}', '${poi.name.replace(/'/g, "\\'")}', ${poi.location.lng}, ${poi.location.lat}, '${poi.type}')">
+            <div class="poi-result-info">
+                <div class="poi-result-name">${poi.name}</div>
+                <div class="poi-result-address">${poi.address || '地址未知'}</div>
+            </div>
+            <button class="btn btn-outline btn-sm">
+                <i class="fas fa-plus"></i> 添加
+            </button>
+        </div>
+    `).join('');
+
+    resultsContainer.style.display = 'block';
+}
+
+/**
+ * 从行程页面添加POI
+ */
+async function addPOIFromItinerary(poiId, poiName, lng, lat, poiType) {
+    const destinationCity = document.getElementById('edit-destination-city').value || userPreferences.destinationCity;
+
+    try {
+        const response = await fetch('http://localhost:8888/api/user-pois/add', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            credentials: 'include',
+            body: JSON.stringify({
+                poi: {
+                    id: poiId,
+                    name: poiName,
+                    lng: lng,
+                    lat: lat,
+                    type: poiType
+                },
+                city: destinationCity,
+                source: 'user',  // 用户添加
+                priority: 'must_visit'  // 默认必去
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error('添加失败');
+        }
+
+        const data = await response.json();
+        console.log('POI added:', data);
+
+        showMessage('成功', `已添加景点：${poiName}`);
+
+        // 清空搜索框和结果
+        document.getElementById('itinerary-poi-search-input').value = '';
+        document.getElementById('itinerary-poi-search-results').style.display = 'none';
+
+        // 刷新必去景点列表
+        await renderCurrentMustVisitPOIs();
+
+    } catch (error) {
+        console.error('Add POI error:', error);
+        showMessage('错误', '添加景点失败');
+    }
+}
+
+// ==================== 🆕 显示当前必去POI列表 ==================== //
+
+/**
+ * 渲染当前必去景点列表
+ */
+async function renderCurrentMustVisitPOIs() {
+    const container = document.getElementById('current-must-visit-pois');
+
+    console.log('[renderCurrentMustVisitPOIs] 开始渲染POI列表');
+
+    if (!container) {
+        console.error('[renderCurrentMustVisitPOIs] 容器元素不存在: current-must-visit-pois');
+        return;
+    }
+
+    try {
+        console.log('[renderCurrentMustVisitPOIs] 发起API请求...');
+
+        // 获取用户POI列表
+        const response = await fetch('http://localhost:8888/api/user-pois/list', {
+            credentials: 'include'
+        });
+
+        console.log('[renderCurrentMustVisitPOIs] API响应状态:', response.status);
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('[renderCurrentMustVisitPOIs] API错误:', errorText);
+            throw new Error(`获取POI列表失败: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log('[renderCurrentMustVisitPOIs] 获取到的POI数据:', data);
+
+        const pois = data.pois || [];
+        console.log('[renderCurrentMustVisitPOIs] POI数量:', pois.length);
+
+        if (pois.length === 0) {
+            console.log('[renderCurrentMustVisitPOIs] 暂无POI，显示空状态');
+            container.innerHTML = '<p class="poi-empty-hint">暂无必去景点</p>';
+            return;
+        }
+
+        // 渲染POI列表
+        const html = pois.map(poi => {
+            const priorityBadge = poi.priority === 'must_visit'
+                ? '<span class="poi-badge must-visit">必去</span>'
+                : '<span class="poi-badge optional">可选</span>';
+
+            const sourceBadge = poi.source === 'user'
+                ? '<span class="poi-badge user-source">用户</span>'
+                : '<span class="poi-badge ai-source">AI</span>';
+
+            return `
+                <div class="poi-item" data-poi-id="${poi.poi_id}">
+                    <div class="poi-info">
+                        <div class="poi-name">${poi.poi_name}</div>
+                        <div class="poi-meta">
+                            ${priorityBadge}
+                            ${sourceBadge}
+                        </div>
+                    </div>
+                    <div class="poi-actions-inline">
+                        <button class="btn-icon-small toggle-priority" onclick="togglePOIPriority('${poi.poi_id}')" title="切换优先级">
+                            <i class="fas fa-star"></i>
+                        </button>
+                        <button class="btn-icon-small remove-poi" onclick="removePOIFromItinerary('${poi.poi_id}')" title="移除景点">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        container.innerHTML = html;
+        console.log('[renderCurrentMustVisitPOIs] POI列表渲染完成');
+
+    } catch (error) {
+        console.error('[renderCurrentMustVisitPOIs] 渲染错误:', error);
+        container.innerHTML = '<p class="poi-empty-hint">加载失败，请刷新重试</p>';
+    }
+}
+
+// ==================== 🆕 POI优先级切换 ==================== //
+
+/**
+ * 切换POI优先级（必去 ↔ 可选）
+ */
+async function togglePOIPriority(poiId) {
+    try {
+        // 先获取当前POI列表，找到该POI的当前优先级
+        const listResponse = await fetch('http://localhost:8888/api/user-pois/list', {
+            credentials: 'include'
+        });
+
+        if (!listResponse.ok) {
+            throw new Error('获取POI列表失败');
+        }
+
+        const listData = await listResponse.json();
+        const poi = listData.pois.find(p => p.poi_id === poiId);
+
+        if (!poi) {
+            throw new Error('POI不存在');
+        }
+
+        // 切换优先级
+        const newPriority = poi.priority === 'must_visit' ? 'optional' : 'must_visit';
+
+        // 调用更新接口
+        const updateResponse = await fetch('http://localhost:8888/api/user-pois/update-priority', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            credentials: 'include',
+            body: JSON.stringify({
+                poi_id: poiId,
+                priority: newPriority
+            })
+        });
+
+        if (!updateResponse.ok) {
+            throw new Error('更新优先级失败');
+        }
+
+        const priorityText = newPriority === 'must_visit' ? '必去' : '可选';
+        showMessage('成功', `已将景点标记为：${priorityText}`);
+
+        // 刷新列表
+        await renderCurrentMustVisitPOIs();
+
+    } catch (error) {
+        console.error('Toggle priority error:', error);
+        showMessage('错误', '切换优先级失败');
+    }
+}
+
+/**
+ * 从行程中移除POI
+ */
+async function removePOIFromItinerary(poiId) {
+    try {
+        const response = await fetch(`http://localhost:8888/api/user-pois/remove/${poiId}`, {
+            method: 'DELETE',
+            credentials: 'include'
+        });
+
+        if (!response.ok) {
+            throw new Error('移除失败');
+        }
+
+        showMessage('成功', '已移除景点');
+
+        // 刷新列表
+        await renderCurrentMustVisitPOIs();
+
+    } catch (error) {
+        console.error('Remove POI error:', error);
+        showMessage('错误', '移除景点失败');
+    }
+}
+
+// ==================== 🆕 重新规划模态框 ==================== //
+
+/**
+ * 显示重新规划模式选择模态框
+ */
+function showReplanModal() {
+    const modal = document.getElementById('replan-modal');
+    modal.style.display = 'block';
+}
+
+/**
+ * 关闭重新规划模态框
+ */
+function closeReplanModal() {
+    const modal = document.getElementById('replan-modal');
+    modal.style.display = 'none';
+}
+
+/**
+ * 确认重新规划
+ */
+async function confirmReplan() {
+    const replanMode = document.querySelector('input[name="replan-mode"]:checked').value;
+
+    closeReplanModal();
+
+    showMessage('处理中', '正在重新规划行程，请稍候...');
+
+    try {
+        // 获取用户POI列表
+        const poisResponse = await fetch('http://localhost:8888/api/user-pois/list', {
+            credentials: 'include'
+        });
+
+        if (!poisResponse.ok) {
+            throw new Error('获取POI列表失败');
+        }
+
+        const poisData = await poisResponse.json();
+
+        // 构建重新规划请求
+        const requestBody = {
+            destinationCity: document.getElementById('edit-destination-city').value,
+            originCity: document.getElementById('edit-origin-city').value,
+            startDate: document.getElementById('edit-start-date').value,
+            endDate: document.getElementById('edit-end-date').value,
+            budget: userPreferences.budget,
+            budgetType: userPreferences.budgetType,
+            customBudget: userPreferences.customBudget,
+            travelers: parseInt(document.getElementById('edit-travelers').value),
+            travelStyles: userPreferences.travelStyles,
+            customPrompt: userPreferences.customPrompt,
+            accommodation: userPreferences.accommodation,
+            replanMode: replanMode,  // 'incremental' 或 'complete'
+            previousItinerary: itinerary,  // 传递当前行程
+            userPOIs: poisData.pois  // 传递用户POI列表
+        };
+
+        console.log('Replan request:', requestBody);
+
+        // 调用后端API
+        const response = await fetch('http://localhost:8888/api/itinerary/generate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            credentials: 'include',
+            body: JSON.stringify(requestBody)
+        });
+
+        if (!response.ok) {
+            throw new Error('重新规划失败');
+        }
+
+        const data = await response.json();
+        console.log('Replan result:', data);
+
+        // 更新全局行程变量
+        itinerary = data.itinerary;
+
+        // 重新生成每日行程显示
+        generateDailySessions(data.itinerary);
+
+        // 重新初始化折叠功能
+        setTimeout(initializeCollapsibleSections, 100);
+
+        showMessage('成功', '已完成重新规划！');
+
+    } catch (error) {
+        console.error('Replan error:', error);
+        showMessage('错误', `重新规划失败：${error.message}`);
+    }
+}
+
+// ==================== 🆕 添加活动模态框 ==================== //
+
+/**
+ * 显示添加活动模态框
+ */
+function showAddActivityModal() {
+    const modal = document.getElementById('add-activity-modal');
+    const daySelect = document.getElementById('activity-day-select');
+
+    // 动态生成日期选项
+    if (itinerary && itinerary.length > 0) {
+        daySelect.innerHTML = itinerary.map((day, index) =>
+            `<option value="${index}">第${index + 1}天 (${day.date})</option>`
+        ).join('');
+    } else {
+        showMessage('提示', '请先生成行程');
+        return;
+    }
+
+    modal.style.display = 'block';
+}
+
+/**
+ * 关闭添加活动模态框
+ */
+function closeAddActivityModal() {
+    const modal = document.getElementById('add-activity-modal');
+    modal.style.display = 'none';
+
+    // 清空表单
+    document.getElementById('add-activity-form').reset();
+}
+
+/**
+ * 提交添加活动
+ */
+async function submitActivity(event) {
+    event.preventDefault();
+
+    const dayIndex = parseInt(document.getElementById('activity-day-select').value);
+    const activityText = document.getElementById('activity-text-input').value.trim();
+    const activityTime = document.getElementById('activity-time-input').value;
+
+    if (!activityText) {
+        showMessage('提示', '请输入活动内容');
+        return;
+    }
+
+    try {
+        const response = await fetch('http://localhost:8888/api/activities/add', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            credentials: 'include',
+            body: JSON.stringify({
+                itinerary_id: 'current',  // 使用当前行程
+                day_index: dayIndex,
+                activity_text: activityText,
+                time_slot: activityTime
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error('添加活动失败');
+        }
+
+        const data = await response.json();
+        console.log('Activity added:', data);
+
+        closeAddActivityModal();
+        showMessage('成功', '已添加自定义活动');
+
+        // 🔧 刷新行程显示：在对应的日期卡片中插入新活动
+        const activity = data.activity;
+        if (activity && itinerary && itinerary[dayIndex]) {
+            // 构建活动对象（模拟行程中的活动格式）
+            const newActivity = {
+                time: activity.time_slot || '自定义时间',
+                title: activity.activity_text,
+                description: '（用户自定义活动）',
+                duration: '',
+                location: { address: '', lng: null, lat: null },
+                transportation: null,
+                activity_type: 'custom'  // 标记为自定义活动
+            };
+
+            // 添加到内存中的行程数据
+            if (!itinerary[dayIndex].activities) {
+                itinerary[dayIndex].activities = [];
+            }
+            itinerary[dayIndex].activities.push(newActivity);
+
+            // 重新生成该天的显示（或重新生成整个行程）
+            generateDailySessions(itinerary);
+
+            // 重新初始化折叠功能
+            setTimeout(initializeCollapsibleSections, 100);
+        }
+
+    } catch (error) {
+        console.error('Submit activity error:', error);
+        showMessage('错误', '添加活动失败');
     }
 }

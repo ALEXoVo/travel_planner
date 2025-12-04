@@ -17,6 +17,7 @@ from routes.itinerary import itinerary_bp
 from routes.map import map_bp
 from routes.poi import poi_bp
 from routes.auth import auth_bp
+from routes.activity import activity_bp
 
 # 配置日志
 logging.basicConfig(
@@ -131,8 +132,9 @@ def register_blueprints(app: Flask):
     app.register_blueprint(map_bp)
     app.register_blueprint(poi_bp)
     app.register_blueprint(auth_bp)
+    app.register_blueprint(activity_bp)
 
-    logger.info("Blueprints registered: itinerary, map, poi, auth")
+    logger.info("Blueprints registered: itinerary, map, poi, auth, activity")
 
 
 def register_error_handlers(app: Flask):

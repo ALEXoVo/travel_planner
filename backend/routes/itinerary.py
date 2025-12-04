@@ -26,7 +26,7 @@ itinerary_bp = Blueprint('itinerary', __name__)
 @itinerary_bp.route('/api/itinerary/generate', methods=['POST'])
 def generate_itinerary():
     """
-    生成旅游行程计划。
+    生成旅游行程计划（支持重新规划）。
 
     Request Body:
         {
@@ -38,7 +38,10 @@ def generate_itinerary():
             "budgetType": "preset/custom",
             "customBudget": "自定义预算（可选）",
             "travelers": 出行人数,
-            "travelStyles": ["旅游风格列表"]
+            "travelStyles": ["旅游风格列表"],
+            "replanMode": "incremental" | "complete" | null,  // 新增：重新规划模式
+            "previousItinerary": {...},  // 新增：上次的行程数据
+            "userPOIs": [...]  // 新增：用户添加的POI列表
         }
 
     Returns:
@@ -50,13 +53,23 @@ def generate_itinerary():
         if not data:
             return jsonify({"error": "Invalid JSON data"}), 400
 
-        logger.info(f"Generating itinerary for {data.get('destinationCity')}")
+        # 提取重新规划相关参数
+        replan_mode = data.get('replanMode', None)
+        previous_itinerary = data.get('previousItinerary', None)
+        user_pois = data.get('userPOIs', [])
+
+        logger.info(f"Generating itinerary for {data.get('destinationCity')}, replan_mode={replan_mode}")
 
         # 创建行程构建器
         builder = ItineraryBuilder()
 
-        # 构建行程
-        itinerary = builder.build_itinerary(data)
+        # 构建行程（传递重新规划参数）
+        itinerary = builder.build_itinerary(
+            user_preferences=data,
+            replan_mode=replan_mode,
+            previous_itinerary=previous_itinerary,
+            user_pois=user_pois
+        )
 
         # 🆕 如果用户已登录，保存到数据库
         itinerary_id = None

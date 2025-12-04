@@ -178,7 +178,15 @@
                                 <input type="text" id="destination-city" placeholder="请输入目的地城市，例如：北京">
                             </div>
                         </div>
-                        
+
+                        <div class="form-group">
+                            <label>住宿信息（可选）</label>
+                            <input type="text" id="accommodation-info" placeholder="例如：深圳市福田区、香港尖沙咀附近、已预订xx酒店">
+                            <small style="color: #666; font-size: 12px; margin-top: 4px; display: block;">
+                                提供住宿地址或区域，帮助AI更好地规划行程路线
+                            </small>
+                        </div>
+
                         <div class="form-row">
                             <div class="form-group">
                                 <label>出发日期</label>
@@ -287,7 +295,8 @@
                         <div class="form-group">
                             <label>我想去的景点（可选）</label>
                             <div class="poi-input-group">
-                                <input type="text" id="poi-search-input" placeholder="搜索景点名称..." />
+                                <input type="text" id="poi-city-input" placeholder="城市（可选，留空则使用目的地）" style="flex: 1; margin-right: 8px;" />
+                                <input type="text" id="poi-search-input" placeholder="搜索景点名称..." style="flex: 2; margin-right: 8px;" />
                                 <button class="btn btn-outline" id="search-poi-btn" type="button">
                                     <i class="fas fa-search"></i> 搜索
                                 </button>
@@ -313,34 +322,39 @@
                 <div id="itinerary-screen" class="screen" style="display: none;">
                     <div class="itinerary-header">
                         <h2><i class="fas fa-route"></i> 行程编辑</h2>
-                        <button class="btn btn-secondary" id="back-to-settings">
-                            <i class="fas fa-arrow-left"></i> 返回设置
-                        </button>
+                        <div style="display: flex; gap: 10px;">
+                            <button class="btn btn-primary" id="replan-itinerary-btn" style="display: none;">
+                                <i class="fas fa-sync-alt"></i> 重新规划
+                            </button>
+                            <button class="btn btn-secondary" id="back-to-settings">
+                                <i class="fas fa-arrow-left"></i> 返回设置
+                            </button>
+                        </div>
                     </div>
                     
                     <!-- 可编辑的旅程信息 -->
                     <div class="itinerary-summary">
                         <div class="summary-item">
                             <label>出发地</label>
-                            <input type="text" id="edit-origin-city" value="上海">
+                            <input type="text" id="edit-origin-city" value="">
                         </div>
                         <div class="summary-item">
                             <label>目的地</label>
-                            <input type="text" id="edit-destination-city" value="北京">
+                            <input type="text" id="edit-destination-city" value="">
                         </div>
                         <div class="summary-item">
                             <label>出行日期</label>
-                            <input type="date" id="edit-start-date" value="2023-10-01">
+                            <input type="date" id="edit-start-date" value="">
                         </div>
                         <div class="summary-item">
                             <label>返回日期</label>
-                            <input type="date" id="edit-end-date" value="2023-10-05">
+                            <input type="date" id="edit-end-date" value="">
                         </div>
                         <div class="summary-item">
                             <label>出行人数</label>
                             <select id="edit-travelers">
                                 <option value="1">1人</option>
-                                <option value="2" selected>2人</option>
+                                <option value="2">2人</option>
                                 <option value="3">3人</option>
                                 <option value="4">4人</option>
                                 <option value="5">5人以上</option>
@@ -348,78 +362,111 @@
                         </div>
                     </div>
 
-                    <!-- 每日行程 -->
-                    <!-- 第一天 -->
-                    <div class="itinerary-section">
-                        <div class="section-header collapsible">
-                            <h3><i class="fas fa-calendar-day"></i> 第一天 (2023-10-01)</h3>
-                            <i class="fas fa-chevron-down"></i>
+                    <!-- 🆕 POI和活动管理区域 -->
+                    <div class="itinerary-poi-manager">
+                        <div class="poi-manager-header">
+                            <h3><i class="fas fa-map-marked-alt"></i> 景点管理</h3>
+                            <div class="poi-actions">
+                                <button class="btn btn-outline btn-sm" id="add-activity-btn">
+                                    <i class="fas fa-plus"></i> 添加活动
+                                </button>
+                                <button class="btn btn-primary btn-sm" id="replan-mode-btn">
+                                    <i class="fas fa-sync-alt"></i> 重新规划
+                                </button>
+                            </div>
                         </div>
-                        <div class="section-content">
-                            <div class="day-content">
-                                <div class="map-container">
-                                    <div id="day1-map" style="width: 100%; height: 300px;"></div>
-                                </div>
-                                
-                                <div class="transport-info">
-                                    <h4><i class="fas fa-bus"></i> 交通信息</h4>
-                                    <div class="transport-route">
-                                        <div class="route-item">
-                                            <span class="location">机场</span>
-                                            <i class="fas fa-arrow-right"></i>
-                                            <span class="transport-mode">机场大巴</span>
-                                            <i class="fas fa-arrow-right"></i>
-                                            <span class="location">酒店</span>
-                                        </div>
-                                        <div class="route-item">
-                                            <span class="location">酒店</span>
-                                            <i class="fas fa-arrow-right"></i>
-                                            <span class="transport-mode">步行</span>
-                                            <i class="fas fa-arrow-right"></i>
-                                            <span class="location">王府井</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <div class="activities">
-                                    <h4><i class="fas fa-tasks"></i> 活动安排</h4>
-                                    <div class="activity-item">
-                                        <div class="activity-header">
-                                            <input type="text" value="入住酒店" class="activity-title">
-                                            <button class="btn-icon remove-activity"><i class="fas fa-trash"></i></button>
-                                        </div>
-                                        <div class="activity-details">
-                                            <label>时间</label>
-                                            <input type="text" value="09:00" class="activity-time">
-                                            <label>描述</label>
-                                            <textarea class="activity-description"></textarea>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="activity-item">
-                                        <div class="activity-header">
-                                            <input type="text" value="游览天安门广场" class="activity-title">
-                                            <button class="btn-icon remove-activity"><i class="fas fa-trash"></i></button>
-                                        </div>
-                                        <div class="activity-details">
-                                            <label>时间</label>
-                                            <input type="text" value="12:00" class="activity-time">
-                                            <label>描述</label>
-                                            <textarea class="activity-description"></textarea>
-                                        </div>
-                                    </div>
-                                    
-                                    <button class="btn btn-outline add-activity">
-                                        <i class="fas fa-plus"></i> 添加活动
-                                    </button>
-                                </div>
+
+                        <!-- POI搜索区域 -->
+                        <div class="poi-search-section">
+                            <div class="poi-input-group">
+                                <input type="text" id="itinerary-poi-search-input" placeholder="搜索景点名称..." style="flex: 1; margin-right: 8px;" />
+                                <button class="btn btn-outline btn-sm" id="itinerary-search-poi-btn">
+                                    <i class="fas fa-search"></i> 搜索
+                                </button>
+                            </div>
+                            <div id="itinerary-poi-search-results" class="poi-search-results" style="display: none;"></div>
+                        </div>
+
+                        <!-- 当前必去景点列表 -->
+                        <div class="current-pois-section">
+                            <h4>当前必去景点</h4>
+                            <div id="current-must-visit-pois" class="current-pois-list">
+                                <p class="poi-empty-hint">暂无必去景点</p>
                             </div>
                         </div>
                     </div>
+
+                    <!-- 每日行程容器（由 JavaScript 动态生成） -->
+                    <div id="itinerary-container"></div>
                 </div>
             </div>
         </div>
     </main>
+
+    <!-- 🆕 重新规划模式选择模态框 -->
+    <div id="replan-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-sync-alt"></i> 选择重新规划模式</h3>
+                <span class="close-btn" onclick="closeReplanModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="replan-option">
+                    <div class="replan-option-header">
+                        <input type="radio" id="replan-incremental" name="replan-mode" value="incremental" checked>
+                        <label for="replan-incremental"><strong>增量规划</strong></label>
+                    </div>
+                    <p class="replan-option-desc">保留所有原有景点（用户+AI推荐），添加新选择的景点，重新优化路线</p>
+                </div>
+                <div class="replan-option">
+                    <div class="replan-option-header">
+                        <input type="radio" id="replan-complete" name="replan-mode" value="complete">
+                        <label for="replan-complete"><strong>完全重新规划</strong></label>
+                    </div>
+                    <p class="replan-option-desc">只保留标记为"必去"的景点，丢弃AI推荐的可选景点，生成全新行程</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeReplanModal()">取消</button>
+                <button class="btn btn-primary" onclick="confirmReplan()">确认重新规划</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 🆕 添加活动模态框 -->
+    <div id="add-activity-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-plus-circle"></i> 添加自定义活动</h3>
+                <span class="close-btn" onclick="closeAddActivityModal()">&times;</span>
+            </div>
+            <form id="add-activity-form" onsubmit="return false;">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="activity-day-select">选择哪一天</label>
+                        <select id="activity-day-select" class="form-control" required>
+                            <!-- 动态生成选项 -->
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="activity-text-input">活动内容</label>
+                        <textarea id="activity-text-input" class="form-control" placeholder="例如：21:00 在酒店附近吃夜宵" rows="3" required></textarea>
+                        <small style="color: #666; font-size: 12px; margin-top: 4px; display: block;">
+                            注意：活动是自定义文本，不会触发行程重新规划
+                        </small>
+                    </div>
+                    <div class="form-group">
+                        <label for="activity-time-input">时间（可选）</label>
+                        <input type="time" id="activity-time-input" class="form-control">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeAddActivityModal()">取消</button>
+                    <button type="submit" class="btn btn-primary" id="confirm-add-activity-btn">添加</button>
+                </div>
+            </form>
+        </div>
+    </div>
     <script src="script.js"></script>
 </body>
 </html>
