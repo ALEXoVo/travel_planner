@@ -19,12 +19,22 @@ class Config:
     HOST = '0.0.0.0'
     PORT = 8888
 
-    # CORS配置
+    # CORS配置（修复：允许携带Cookie以支持Flask-Login）
     CORS_RESOURCES = {
         r"/api/*": {
-            "origins": "*",
+            "origins": [
+                "http://localhost:5500",  # VS Code Live Server默认端口
+                "http://127.0.0.1:5500",
+                "http://localhost:8080",  # 其他常见端口
+                "http://127.0.0.1:8080",
+                "http://localhost:3000",
+                "http://127.0.0.1:3000",
+                "null"  # 允许file://协议直接打开HTML文件
+            ],
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-            "allow_headers": ["Content-Type", "Authorization"]
+            "allow_headers": ["Content-Type", "Authorization"],
+            "supports_credentials": True,  # 关键：允许跨域请求携带Cookie
+            "expose_headers": ["Content-Type"]
         }
     }
 

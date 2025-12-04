@@ -28,7 +28,8 @@ def autocomplete_poi():
     POI搜索自动补全
 
     Query参数:
-        query: 搜索关键词 (必需)
+        keywords: 搜索关键词 (必需) - 兼容前端参数名
+        query: 搜索关键词 (必需) - 向后兼容
         city: 城市名称 (必需)
         limit: 返回数量限制 (可选, 默认10)
 
@@ -48,12 +49,13 @@ def autocomplete_poi():
         }
     """
     try:
-        query = request.args.get('query', '').strip()
+        # 兼容 keywords 和 query 两种参数名
+        query = request.args.get('keywords', '').strip() or request.args.get('query', '').strip()
         city = request.args.get('city', '').strip()
         limit = int(request.args.get('limit', 10))
 
         if not query or not city:
-            return jsonify({"error": "query and city are required"}), 400
+            return jsonify({"error": "keywords and city are required"}), 400
 
         # 复用现有的amap_service
         amap_service = AmapService()
@@ -129,6 +131,7 @@ def add_user_poi():
 
         # 🆕 已登录用户：保存到数据库
         if current_user.is_authenticated:
+            logger.info(f"[ADD POI] Authenticated user: user_id={current_user.id}, username={current_user.username}, city={city}, poi_id={poi['id']}, priority={priority}")
             try:
                 # POI去重检查
                 existing = UserPOIFavorite.query.filter_by(
@@ -138,6 +141,7 @@ def add_user_poi():
                 ).first()
 
                 if existing:
+                    logger.warning(f"[ADD POI] POI already exists: user_id={current_user.id}, poi_id={poi['id']}")
                     return jsonify({"error": "POI already in the list"}), 409
 
                 # 创建数据库记录（包含新字段）
@@ -154,6 +158,7 @@ def add_user_poi():
                 )
                 db.session.add(favorite)
                 db.session.commit()
+                logger.info(f"[ADD POI] DB commit successful: poi_id={poi['id']}")
 
                 # 查询当前总数
                 total_count = UserPOIFavorite.query.filter_by(
@@ -161,7 +166,7 @@ def add_user_poi():
                     destination_city=city
                 ).count()
 
-                logger.info(f"POI saved to DB: user={current_user.username}, poi={poi.get('name')}")
+                logger.info(f"[ADD POI] POI saved to DB: user={current_user.username}, poi={poi.get('name')}, total_count={total_count}")
 
                 return jsonify({
                     "message": "POI added successfully",
@@ -175,17 +180,24 @@ def add_user_poi():
 
         # 未登录用户：保存到Session（原有逻辑）
         else:
+            # 诊断：打印Session ID
+            from flask import request as flask_request
+            logger.info(f"[ADD POI] Session ID: {session.get('_id', 'NO SESSION ID')}")
+            logger.info(f"[ADD POI] Session SID cookie: {flask_request.cookies.get('travelplanner_session', 'NO COOKIE')}")
+            logger.info(f"[ADD POI] Unauthenticated user: using session storage, city={city}, poi_id={poi['id']}, priority={priority}")
             # 初始化Session结构
             if 'user_selected_pois' not in session:
                 session['user_selected_pois'] = {
                     'destination_city': city,
                     'pois': []
                 }
+                logger.info(f"[ADD POI] Initialized new session storage for city={city}")
 
             user_data = session['user_selected_pois']
 
             # 城市一致性检查
             if user_data['destination_city'] != city:
+                logger.warning(f"[ADD POI] City mismatch: session_city={user_data['destination_city']}, new_city={city}")
                 return jsonify({
                     "error": f"Cannot mix POIs from different cities. Current city: {user_data['destination_city']}"
                 }), 400
@@ -193,6 +205,7 @@ def add_user_poi():
             # POI去重检查
             existing_ids = [p['id'] for p in user_data['pois']]
             if poi['id'] in existing_ids:
+                logger.warning(f"[ADD POI] POI already exists in session: poi_id={poi['id']}")
                 return jsonify({"error": "POI already in the list"}), 409
 
             # 添加时间戳和新字段
@@ -204,6 +217,8 @@ def add_user_poi():
             user_data['pois'].append(poi)
             session['user_selected_pois'] = user_data
             session.modified = True  # 标记Session已修改
+
+            logger.info(f"[ADD POI] POI saved to session: poi={poi.get('name')}, total_count={len(user_data['pois'])}")
 
             return jsonify({
                 "message": "POI added successfully",
@@ -226,35 +241,44 @@ def list_user_pois():
     """
     try:
         city = request.args.get('city', '').strip()
+        logger.info(f"[LIST POI] Request received: city={city if city else 'all'}")
 
         # 🆕 已登录用户：从数据库读取
         if current_user.is_authenticated:
+            logger.info(f"[LIST POI] Authenticated user: user_id={current_user.id}, username={current_user.username}")
             # 如果提供了city参数，按城市过滤；否则返回所有POI
             if city:
                 favorites = UserPOIFavorite.query.filter_by(
                     user_id=current_user.id,
                     destination_city=city
                 ).order_by(UserPOIFavorite.created_at.desc()).all()
+                logger.info(f"[LIST POI] DB query with city filter: found {len(favorites)} POIs")
             else:
                 # 返回该用户的所有POI，不限城市
                 favorites = UserPOIFavorite.query.filter_by(
                     user_id=current_user.id
                 ).order_by(UserPOIFavorite.created_at.desc()).all()
+                logger.info(f"[LIST POI] DB query without city filter: found {len(favorites)} POIs")
 
-            # 转换为前端期望的格式
+            # 转换为前端期望的格式（包含priority和source字段）
             pois = []
             for fav in favorites:
                 location_data = json.loads(fav.location) if fav.location else {}
                 pois.append({
-                    'id': fav.poi_id,
-                    'name': fav.poi_name,
+                    'poi_id': fav.poi_id,  # 使用poi_id而非id，匹配前端
+                    'poi_name': fav.poi_name,  # 使用poi_name而非name，匹配前端
+                    'id': fav.poi_id,  # 兼容性：同时保留id字段
+                    'name': fav.poi_name,  # 兼容性：同时保留name字段
                     'city': fav.destination_city,
                     'lng': location_data.get('lng'),
                     'lat': location_data.get('lat'),
                     'type': fav.poi_type,
-                    'added_at': fav.created_at.isoformat()
+                    'added_at': fav.created_at.isoformat(),
+                    'priority': fav.priority,  # 新增：优先级字段
+                    'source': fav.source  # 新增：来源字段
                 })
 
+            logger.info(f"[LIST POI] Returning {len(pois)} POIs for authenticated user")
             return jsonify({
                 "destination_city": city if city else "all",
                 "pois": pois,
@@ -263,12 +287,20 @@ def list_user_pois():
 
         # 未登录用户：从Session读取（原有逻辑）
         else:
+            # 诊断：打印Session ID
+            from flask import request as flask_request
+            logger.info(f"[LIST POI] Session ID: {session.get('_id', 'NO SESSION ID')}")
+            logger.info(f"[LIST POI] Session SID cookie: {flask_request.cookies.get('travelplanner_session', 'NO COOKIE')}")
+            logger.info(f"[LIST POI] Unauthenticated user: reading from session")
+            logger.info(f"[LIST POI] Session keys: {list(session.keys())}")
             user_data = session.get('user_selected_pois', {})
+            pois = user_data.get('pois', [])
+            logger.info(f"[LIST POI] Session data: destination_city={user_data.get('destination_city', 'none')}, count={len(pois)}")
 
             return jsonify({
                 "destination_city": user_data.get('destination_city', ''),
-                "pois": user_data.get('pois', []),
-                "count": len(user_data.get('pois', []))
+                "pois": pois,
+                "count": len(pois)
             })
 
     except Exception as e:

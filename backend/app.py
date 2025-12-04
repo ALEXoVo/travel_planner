@@ -7,6 +7,7 @@ Travel Planner Backend Application
 from flask import Flask, jsonify
 from flask_cors import CORS
 from flask_login import LoginManager
+from flask_session import Session  # 新增：导入Flask-Session
 import logging
 import os
 from datetime import timedelta
@@ -44,6 +45,14 @@ def create_app():
     app.config['SESSION_TYPE'] = 'filesystem'
     app.config['SESSION_PERMANENT'] = True
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)
+    app.config['SESSION_FILE_DIR'] = os.path.join(os.path.dirname(__file__), 'flask_session')
+    app.config['SESSION_FILE_THRESHOLD'] = 500
+
+    # Cookie配置 - 支持跨域和本地文件访问
+    app.config['SESSION_COOKIE_SAMESITE'] = 'None'  # 允许跨站点Cookie
+    app.config['SESSION_COOKIE_SECURE'] = False  # 开发环境HTTP（生产应设为True）
+    app.config['SESSION_COOKIE_HTTPONLY'] = True  # 防止JavaScript访问Cookie
+    app.config['SESSION_COOKIE_NAME'] = 'travelplanner_session'
 
     # 🆕 数据库配置
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///travelplanner.db'
@@ -51,6 +60,10 @@ def create_app():
 
     # 配置CORS - 支持携带Cookie
     CORS(app, resources=Config.CORS_RESOURCES, supports_credentials=True)
+
+    # 🆕 初始化Flask-Session（必须在配置之后）
+    Session(app)
+    logger.info("Flask-Session initialized with filesystem storage")
 
     # 🆕 初始化数据库
     db.init_app(app)

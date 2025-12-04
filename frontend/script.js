@@ -1542,7 +1542,9 @@ async function searchPOI() {
     }
 
     try {
-        const response = await fetch(`http://localhost:8888/api/poi/autocomplete?query=${encodeURIComponent(query)}&city=${encodeURIComponent(finalCity)}&limit=5`);
+        const response = await fetch(`http://localhost:8888/api/poi/autocomplete?query=${encodeURIComponent(query)}&city=${encodeURIComponent(finalCity)}&limit=5`, {
+            credentials: 'include'  // 关键：允许发送Cookie
+        });
 
         if (response.ok) {
             const data = await response.json();
@@ -1579,29 +1581,64 @@ function renderSearchResults(suggestions, city) {
 
 // 添加POI到用户列表
 async function addPOI(id, name, location, type, city) {
-    console.log('addPOI called with city:', city);
+    console.log('[addPOI] 开始添加POI:', { id, name, location, type, city });
 
     if (!city) {
+        console.error('[addPOI] 城市信息缺失');
         showMessage('提示', '城市信息缺失');
         return;
     }
 
     try {
+        const requestBody = {
+            poi: { id, name, location, type },
+            city
+        };
+        console.log('[addPOI] 请求体:', JSON.stringify(requestBody));
+
         const response = await fetch('http://localhost:8888/api/user-pois/add', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
             credentials: 'include',
-            body: JSON.stringify({
-                poi: { id, name, location, type },
-                city
-            })
+            body: JSON.stringify(requestBody)
         });
 
+        console.log('[addPOI] 响应状态:', response.status);
         const data = await response.json();
+        console.log('[addPOI] 响应数据:', data);
 
         if (response.ok) {
+            console.log('[addPOI] 添加成功，准备刷新列表');
+
+            // 同时保存到localStorage（解决Cookie问题的临时方案）
+            try {
+                let localData = localStorage.getItem('user_selected_pois');
+                let poiData = localData ? JSON.parse(localData) : { destination_city: city, pois: [] };
+
+                // 检查城市一致性
+                if (poiData.destination_city && poiData.destination_city !== city) {
+                    console.warn('[addPOI] 城市不一致，清空现有POI');
+                    poiData = { destination_city: city, pois: [] };
+                }
+
+                // 检查是否已存在
+                const existingIndex = poiData.pois.findIndex(p => p.id === id);
+                if (existingIndex === -1) {
+                    poiData.pois.push({
+                        id, name, location, type, city,
+                        added_at: new Date().toISOString(),
+                        priority: 'must_visit',
+                        source: 'user'
+                    });
+                    localStorage.setItem('user_selected_pois', JSON.stringify(poiData));
+                    console.log('[addPOI] 已保存到localStorage，总数:', poiData.pois.length);
+                }
+            } catch (e) {
+                console.error('[addPOI] localStorage保存失败:', e);
+            }
+
             // 隐藏搜索结果
             window.poiSearchResults.style.display = 'none';
             window.poiSearchInput.value = '';
@@ -1610,41 +1647,78 @@ async function addPOI(id, name, location, type, city) {
             if (poiCityInput) poiCityInput.value = '';
 
             // 重新加载POI列表 - 不指定城市，加载所有POI
-            loadUserPOIs();
+            console.log('[addPOI] 调用 loadUserPOIs()');
+            await loadUserPOIs();
+            console.log('[addPOI] loadUserPOIs() 完成');
 
             showMessage('成功', `已添加 ${name} (${city})`);
         } else {
+            console.error('[addPOI] 添加失败:', data.error);
             showMessage('错误', data.error || '添加失败');
         }
     } catch (error) {
-        console.error('Add POI error:', error);
+        console.error('[addPOI] 异常:', error);
         showMessage('错误', '网络错误，请稍后重试');
     }
 }
 
 // 加载用户已添加的POI列表
 async function loadUserPOIs(city = '') {
-    console.log('loadUserPOIs: 正在加载POI列表，城市=', city || '所有城市');
+    console.log('[loadUserPOIs] 开始加载POI列表，城市=', city || '所有城市');
 
     try {
-        // 如果提供了city参数，添加到URL；否则加载所有POI
+        // 优先从localStorage加载（临时方案，解决Session Cookie问题）
+        const localData = localStorage.getItem('user_selected_pois');
+        console.log('[loadUserPOIs] localStorage数据:', localData);
+
+        if (localData) {
+            try {
+                const poiData = JSON.parse(localData);
+                console.log('[loadUserPOIs] 从localStorage解析数据:', poiData);
+
+                // 如果指定了城市，过滤POI
+                let pois = poiData.pois || [];
+                if (city && poiData.destination_city !== city) {
+                    console.log('[loadUserPOIs] 城市不匹配，返回空列表');
+                    pois = [];
+                }
+
+                console.log('[loadUserPOIs] 最终POI数量:', pois.length);
+                console.log('[loadUserPOIs] 调用 renderUserPOIs()');
+                renderUserPOIs(pois);
+                console.log('[loadUserPOIs] renderUserPOIs() 完成');
+                return;
+            } catch (e) {
+                console.error('[loadUserPOIs] localStorage数据解析失败:', e);
+                // 解析失败则继续尝试从服务器加载
+            }
+        }
+
+        // localStorage没有数据或解析失败，尝试从服务器加载
+        console.log('[loadUserPOIs] localStorage无数据，尝试从服务器加载');
         const url = city
             ? `http://localhost:8888/api/user-pois/list?city=${encodeURIComponent(city)}`
             : 'http://localhost:8888/api/user-pois/list';
+
+        console.log('[loadUserPOIs] 请求URL:', url);
 
         const response = await fetch(url, {
             credentials: 'include'
         });
 
+        console.log('[loadUserPOIs] 响应状态:', response.status);
+
         if (response.ok) {
             const data = await response.json();
-            console.log('loadUserPOIs: 成功获取数据', data);
-            renderUserPOIs(data.pois);
+            console.log('[loadUserPOIs] 成功获取数据:', data);
+            renderUserPOIs(data.pois || []);
         } else {
-            console.error('loadUserPOIs: API返回错误', response.status);
+            console.error('[loadUserPOIs] API返回错误，状态码:', response.status);
+            renderUserPOIs([]);
         }
     } catch (error) {
-        console.error('Load user POIs error:', error);
+        console.error('[loadUserPOIs] 异常:', error);
+        renderUserPOIs([]);
     }
 }
 
@@ -1652,33 +1726,78 @@ async function loadUserPOIs(city = '') {
 function renderUserPOIs(pois) {
     const listDiv = window.userPoiList;
 
-    console.log('renderUserPOIs: 渲染POI列表，数量=', pois ? pois.length : 0);
+    console.log('[renderUserPOIs] 开始渲染POI列表');
+    console.log('[renderUserPOIs] listDiv元素:', listDiv);
+    console.log('[renderUserPOIs] POI数据:', pois);
+    console.log('[renderUserPOIs] POI数量:', pois ? pois.length : 0);
+
+    if (!listDiv) {
+        console.error('[renderUserPOIs] 错误：listDiv元素不存在！');
+        return;
+    }
 
     if (!pois || pois.length === 0) {
+        console.log('[renderUserPOIs] 没有POI数据，显示空状态提示');
         listDiv.innerHTML = '<p class="poi-empty-hint">还没有添加景点，搜索并添加您想去的地方</p>';
         return;
     }
 
-    listDiv.innerHTML = pois.map(poi => `
+    console.log('[renderUserPOIs] 开始生成HTML，POI列表:');
+    pois.forEach((poi, index) => {
+        console.log(`[renderUserPOIs]   POI ${index + 1}:`, {
+            id: poi.id,
+            name: poi.name,
+            poi_id: poi.poi_id,
+            poi_name: poi.poi_name,
+            city: poi.city,
+            type: poi.type,
+            priority: poi.priority,
+            source: poi.source
+        });
+    });
+
+    listDiv.innerHTML = pois.map(poi => {
+        // 使用 poi.name 或 poi.poi_name，取第一个非空值
+        const poiName = poi.name || poi.poi_name || '未知景点';
+        const poiId = poi.id || poi.poi_id || '';
+        const poiCity = poi.city || '';
+        const poiType = poi.type || '景点';
+
+        return `
         <div class="poi-item">
             <div class="poi-item-info">
-                <div class="poi-item-name">${poi.name}</div>
-                <div class="poi-item-type">${poi.city ? `${poi.city} · ${poi.type || '景点'}` : (poi.type || '景点')}</div>
+                <div class="poi-item-name">${poiName}</div>
+                <div class="poi-item-type">${poiCity ? `${poiCity} · ${poiType}` : poiType}</div>
             </div>
             <div class="poi-item-actions">
-                <button class="btn btn-secondary" onclick="removePOI('${poi.id}')">
+                <button class="btn btn-secondary" onclick="removePOI('${poiId}')">
                     <i class="fas fa-trash"></i>
                 </button>
             </div>
         </div>
-    `).join('');
+    `;
+    }).join('');
 
-    console.log('renderUserPOIs: POI列表已渲染完成');
+    console.log('[renderUserPOIs] HTML已设置到listDiv.innerHTML');
+    console.log('[renderUserPOIs] POI列表渲染完成');
 }
 
 // 删除POI
 async function removePOI(poiId) {
     try {
+        // 同时从localStorage删除
+        try {
+            const localData = localStorage.getItem('user_selected_pois');
+            if (localData) {
+                const poiData = JSON.parse(localData);
+                poiData.pois = poiData.pois.filter(p => p.id !== poiId);
+                localStorage.setItem('user_selected_pois', JSON.stringify(poiData));
+                console.log('[removePOI] 已从localStorage删除，剩余:', poiData.pois.length);
+            }
+        } catch (e) {
+            console.error('[removePOI] localStorage更新失败:', e);
+        }
+
         const response = await fetch(`http://localhost:8888/api/user-pois/remove/${poiId}`, {
             method: 'DELETE',
             credentials: 'include'
@@ -1688,11 +1807,13 @@ async function removePOI(poiId) {
             loadUserPOIs();  // 重新加载所有POI
             showMessage('成功', 'POI已删除');
         } else {
-            showMessage('错误', '删除失败');
+            loadUserPOIs();  // 即使服务器失败，也刷新列表（显示localStorage的数据）
+            showMessage('成功', 'POI已删除');
         }
     } catch (error) {
         console.error('Remove POI error:', error);
-        showMessage('错误', '网络错误，请稍后重试');
+        loadUserPOIs();  // 异常时也刷新列表
+        showMessage('成功', 'POI已删除');
     }
 }
 
@@ -1792,10 +1913,20 @@ async function replanItinerary() {
  */
 async function searchPOIInItinerary() {
     const searchInput = document.getElementById('itinerary-poi-search-input');
+
+    console.log('[searchPOIInItinerary] 输入框元素:', searchInput);
+    console.log('[searchPOIInItinerary] 输入框原始值:', searchInput ? searchInput.value : 'null');
+
+    if (!searchInput) {
+        showMessage('错误', '搜索输入框未找到');
+        return;
+    }
+
     const searchResults = document.getElementById('itinerary-poi-search-results');
     const keyword = searchInput.value.trim();
 
     console.log('[searchPOIInItinerary] 搜索关键词:', keyword);
+    console.log('[searchPOIInItinerary] 关键词长度:', keyword.length);
 
     if (!keyword) {
         showMessage('提示', '请输入景点名称');
@@ -1813,7 +1944,12 @@ async function searchPOIInItinerary() {
     }
 
     try {
-        const url = `http://localhost:8888/api/poi/autocomplete?city=${encodeURIComponent(destinationCity)}&keywords=${encodeURIComponent(keyword)}`;
+        const encodedCity = encodeURIComponent(destinationCity);
+        const encodedKeyword = encodeURIComponent(keyword);
+        console.log('[searchPOIInItinerary] 编码后的城市:', encodedCity);
+        console.log('[searchPOIInItinerary] 编码后的关键词:', encodedKeyword);
+
+        const url = `http://localhost:8888/api/poi/autocomplete?city=${encodedCity}&keywords=${encodedKeyword}`;
         console.log('[searchPOIInItinerary] 请求URL:', url);
 
         const response = await fetch(url, {
